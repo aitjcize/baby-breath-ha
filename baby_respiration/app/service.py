@@ -23,7 +23,7 @@ from app.web import WebServer, WebState
 LOGGER = logging.getLogger(__name__)
 
 # Fields that only matter to the web UI; kept out of the MQTT state payload.
-_WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi", "roi_suggestion")
+_WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi", "roi_suggestion", "mqtt")
 
 PROBE_PREVIEW_WIDTH = 640
 
@@ -44,7 +44,7 @@ class BabyRespirationService:
         self.presence = PresenceTracker(enabled=config.signal.presence_enabled)
         self._handled_scan_id = 0
         self._roi_suggestion: dict[str, Any] | None = None
-        self.mqtt = MQTTPublisher(config.mqtt)
+        self.mqtt = MQTTPublisher(self._effective_mqtt())
         self.web_state = WebState(self._camera.roi)
         self.web_server: WebServer | None = None
         self.latest_status: dict[str, Any] = {}
@@ -75,6 +75,29 @@ class BabyRespirationService:
         url = self._clean_url(stored_url) or self._clean_url(base.rtsp_url)
         roi = stored_roi if stored_roi is not None else base.roi
         return replace(base, rtsp_url=url, roi=roi)
+
+    def _effective_mqtt(self):
+        """Broker resolution: UI choice first, then whatever the config offers.
+
+        "auto" keeps the broker the environment provides — the Supervisor's
+        Mosquitto service in add-on mode, or the static config in standalone
+        mode. "custom" points at a user-entered broker anywhere on the
+        network; "disabled" turns publishing off.
+        """
+        stored = self.settings.get()
+        base = self.config.mqtt
+        if stored.mqtt_mode == "custom":
+            return replace(
+                base,
+                enabled=bool(stored.mqtt_host),
+                host=stored.mqtt_host or base.host,
+                port=stored.mqtt_port,
+                username=stored.mqtt_username,
+                password=stored.mqtt_password,
+            )
+        if stored.mqtt_mode == "disabled":
+            return replace(base, enabled=False)
+        return base
 
     def _build_source(self, url: str) -> RTSPFrameSource | DisabledFrameSource | SyntheticFrameSource:
         if not url:
@@ -130,7 +153,7 @@ class BabyRespirationService:
         with self._preview_lock:
             return self._probe_preview
 
-    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None) -> dict[str, Any]:
+    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None, mqtt: dict[str, Any] | None = None) -> dict[str, Any]:
         """Persist wizard-entered settings and queue them for the main loop."""
         update: dict[str, Any] = {}
         if rtsp_url is not None:
@@ -144,6 +167,13 @@ class BabyRespirationService:
                     "the breathing signal and may capture a co-sleeping adult",
                     area * 100,
                 )
+        if mqtt is not None:
+            if not isinstance(mqtt, dict):
+                raise ValueError("mqtt must be an object")
+            allowed = {"mqtt_mode": "mode", "mqtt_host": "host", "mqtt_port": "port", "mqtt_username": "username", "mqtt_password": "password"}
+            for store_key, payload_key in allowed.items():
+                if payload_key in mqtt:
+                    update[store_key] = mqtt[payload_key]
         if not update:
             raise ValueError("nothing to update")
         self.settings.update(**update)
@@ -290,6 +320,13 @@ class BabyRespirationService:
             pending, self._pending = self._pending, {}
         if not pending:
             return
+        if any(key.startswith("mqtt_") for key in pending):
+            new_config = self._effective_mqtt()
+            if new_config != self.mqtt.config:
+                LOGGER.info("applying new MQTT settings (enabled=%s host=%s)", new_config.enabled, new_config.host)
+                self.mqtt.stop()
+                self.mqtt = MQTTPublisher(new_config)
+                self.mqtt.start()
         new_url = self._clean_url(pending.get("rtsp_url", self._camera.rtsp_url))
         new_roi = tuple(pending.get("roi", self._camera.roi))
         url_changed = new_url != self._camera.rtsp_url
@@ -365,6 +402,7 @@ class BabyRespirationService:
             "presence_reason": self.presence.reason,
             "roi": list(self._camera.roi),
             "roi_suggestion": self._roi_suggestion,
+            "mqtt": {**self.mqtt.state(), "mode": self.settings.get().mqtt_mode},
             "scan": self.scanner.snapshot(),
             "waveform_t": estimate.waveform_t,
             "waveform_y": estimate.waveform_y,

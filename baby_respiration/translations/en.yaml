@@ -23,21 +23,6 @@ configuration:
   minimum_signal_rms:
     name: Minimum signal amplitude
     description: Band-passed motion amplitude (pixels RMS) required before the signal counts as observable. Camera-distance dependent - lower it if a genuine breathing waveform with good SNR is rejected as too faint.
-  mqtt_custom_broker:
-    name: Use a custom MQTT broker
-    description: Turn on to use the broker settings below instead of the broker Home Assistant provides (e.g. the Mosquitto add-on).
-  mqtt_host:
-    name: MQTT host
-    description: Custom broker hostname or IP. Only used when the custom broker switch is on.
-  mqtt_port:
-    name: MQTT port
-    description: Custom broker port. Only used when the custom broker switch is on.
-  mqtt_username:
-    name: MQTT username
-    description: Custom broker username. Leave empty for anonymous brokers.
-  mqtt_password:
-    name: MQTT password
-    description: Custom broker password.
   mqtt_base_topic:
     name: MQTT base topic
     description: Topic prefix for state and availability messages.

@@ -8,7 +8,7 @@ An experimental, local-only detector that estimates respiration-like chest/abdom
 
 1. Add this repository to the add-on store: **Settings → Add-ons → Add-on store → ⋮ → Repositories**, then paste the repository URL.
 2. Install **Baby Respiration Monitor** and start it.
-3. For Home Assistant entities, also install and start the **Mosquitto broker** add-on (plus the MQTT integration). The monitor finds it automatically — no broker settings needed.
+3. For Home Assistant entities, also install and start the **Mosquitto broker** add-on (plus the MQTT integration). The monitor finds it automatically — no broker settings needed. Running your broker elsewhere? Point the panel at it in the **Home Assistant** step of onboarding.
 
 ## Onboarding
 
@@ -22,7 +22,9 @@ Open the **Baby Respiration** panel in the sidebar. The wizard walks you through
 
 **Co-sleeping warning.** Never include another person in the box. If an adult shares the bed, the detector can report reassuring "breathing" from *their* motion regardless of the baby's state — a false sense of safety that is worse than no reading. Draw the box around the baby's torso only, and double-check where the auto-detect suggestion lands before accepting it.
 
-Settings persist across restarts and updates. Use **Re-detect region** or **Camera…** on the dashboard to change them later.
+4. **Home Assistant** — choose how readings reach Home Assistant: the broker Home Assistant provides (default, zero setup), a **custom MQTT broker** running anywhere on your network (host, port, credentials), or no MQTT at all. The panel shows live connection status while you save.
+
+Settings persist across restarts and updates. Use **Re-detect region**, **Camera…**, or **MQTT…** on the dashboard to change them later.
 
 ## What the states mean
 
@@ -86,7 +88,7 @@ condition:
 | `no_breath_timeout` | Seconds of missing signal (while calibrated and observable) before `NO_BREATHING_SIGNAL`. |
 | `presence_detection` | Pause monitoring when the crib is confirmed empty. Off = always treat the crib as occupied. |
 | `minimum_signal_rms` | Band-passed motion amplitude (px RMS) required before the signal counts as observable. Camera-distance dependent: lower it if the panel shows a rhythmic waveform with good SNR but says "too faint to trust". |
-| `mqtt_custom_broker` + `mqtt_*` | Only needed for a broker other than the one Home Assistant provides. |
+| `mqtt_base_topic` / `mqtt_discovery_prefix` | Topic naming for power users. The broker itself is chosen in the panel's Home Assistant step. |
 
 The camera URL and measurement region are set in the panel, not in the options, and are stored in the add-on's private data.
 

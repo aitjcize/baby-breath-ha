@@ -159,17 +159,6 @@ def load_addon_config(options_path: str | Path = ADDON_OPTIONS_PATH) -> AppConfi
 def _addon_mqtt(raw: dict[str, Any]) -> MQTTConfig:
     base_topic = str(raw.get("mqtt_base_topic", "baby_respiration")).strip() or "baby_respiration"
     discovery_prefix = str(raw.get("mqtt_discovery_prefix", "homeassistant")).strip() or "homeassistant"
-    if raw.get("mqtt_custom_broker"):
-        host = str(raw.get("mqtt_host", "")).strip()
-        return MQTTConfig(
-            enabled=bool(host),
-            host=host or "localhost",
-            port=int(raw.get("mqtt_port", 1883)),
-            username=str(raw.get("mqtt_username", "")),
-            password=str(raw.get("mqtt_password", "")),
-            base_topic=base_topic,
-            discovery_prefix=discovery_prefix,
-        )
     env_host = os.environ.get("BABY_MQTT_HOST", "").strip()
     return MQTTConfig(
         enabled=bool(env_host),

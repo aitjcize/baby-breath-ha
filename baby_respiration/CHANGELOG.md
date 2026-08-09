@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2
+
+Stability fixes from overnight real-camera use, plus broker choice in the panel:
+
+- Transient rejection: limb twitches (large but sub-excessive motion) no longer poison the whole 24 s analysis window; the masked samples drop out and detection recovers in seconds instead of drifting unavailable after every twitch.
+- Gate hysteresis: once breathing is locked, marginal dips in SNR/confidence no longer flap the state; cold lock-on thresholds are unchanged.
+- New onboarding step **Home Assistant**: choose the HA-provided broker (default, zero setup), a custom MQTT broker anywhere on the network, or no MQTT — with live connection feedback. Also reachable from the dashboard (**MQTT…**). The `mqtt_custom_broker`/`mqtt_host`/… add-on options moved into the panel; `mqtt_base_topic` and `mqtt_discovery_prefix` remain options.
+
 ## 0.3.1
 
 Tuning from the first real-camera validation (wide-angle overhead cam, co-sleeping scene):

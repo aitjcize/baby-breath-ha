@@ -1,9 +1,10 @@
 """Persisted runtime settings managed through the onboarding/setup web UI.
 
-These settings (camera URL and ROI) take precedence over the static
-configuration because the user entered them interactively. They live in a
-small JSON file inside the data directory: ``/data`` under the Home Assistant
-add-on, or ``./data`` (overridable with ``BABY_DATA_DIR``) elsewhere.
+These settings (camera URL, ROI, MQTT broker choice) take precedence over the
+static configuration because the user entered them interactively. They live in
+a small JSON file inside the data directory: ``/data`` under the Home
+Assistant add-on, or ``./data`` (overridable with ``BABY_DATA_DIR``)
+elsewhere.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ import json
 import logging
 import os
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from app.config import normalize_roi
@@ -20,6 +21,8 @@ from app.config import normalize_roi
 LOGGER = logging.getLogger(__name__)
 
 SETTINGS_FILENAME = "settings.json"
+
+MQTT_MODES = ("auto", "custom", "disabled")
 
 
 def default_data_dir() -> Path:
@@ -35,6 +38,13 @@ def default_data_dir() -> Path:
 class RuntimeSettings:
     rtsp_url: str = ""
     roi: tuple[float, float, float, float] | None = None
+    # "auto": broker provided by Home Assistant (or the static config in
+    # standalone mode); "custom": the fields below; "disabled": no MQTT.
+    mqtt_mode: str = "auto"
+    mqtt_host: str = ""
+    mqtt_port: int = 1883
+    mqtt_username: str = ""
+    mqtt_password: str = ""
 
 
 class SettingsStore:
@@ -66,7 +76,6 @@ class SettingsStore:
         if not isinstance(raw, dict):
             LOGGER.warning("%s does not contain an object; starting unconfigured", self._path)
             return RuntimeSettings()
-        url = raw.get("rtsp_url", "")
         roi_raw = raw.get("roi")
         roi: tuple[float, float, float, float] | None = None
         if roi_raw is not None:
@@ -74,7 +83,22 @@ class SettingsStore:
                 roi = normalize_roi(roi_raw)
             except ValueError as exc:
                 LOGGER.warning("ignoring invalid stored ROI: %s", exc)
-        return RuntimeSettings(rtsp_url=str(url or ""), roi=roi)
+        mode = str(raw.get("mqtt_mode", "auto"))
+        if mode not in MQTT_MODES:
+            mode = "auto"
+        try:
+            port = int(raw.get("mqtt_port", 1883))
+        except (TypeError, ValueError):
+            port = 1883
+        return RuntimeSettings(
+            rtsp_url=str(raw.get("rtsp_url", "") or ""),
+            roi=roi,
+            mqtt_mode=mode,
+            mqtt_host=str(raw.get("mqtt_host", "") or ""),
+            mqtt_port=port,
+            mqtt_username=str(raw.get("mqtt_username", "") or ""),
+            mqtt_password=str(raw.get("mqtt_password", "") or ""),
+        )
 
     def get(self) -> RuntimeSettings:
         with self._lock:
@@ -85,20 +109,46 @@ class SettingsStore:
         *,
         rtsp_url: str | None = None,
         roi: tuple[float, float, float, float] | None = None,
+        mqtt_mode: str | None = None,
+        mqtt_host: str | None = None,
+        mqtt_port: int | None = None,
+        mqtt_username: str | None = None,
+        mqtt_password: str | None = None,
     ) -> RuntimeSettings:
         """Merge the given fields into the stored settings and persist."""
+        if mqtt_mode is not None and mqtt_mode not in MQTT_MODES:
+            raise ValueError(f"mqtt_mode must be one of {MQTT_MODES}")
+        if mqtt_port is not None and not 1 <= int(mqtt_port) <= 65535:
+            raise ValueError("mqtt_port is invalid")
         with self._lock:
-            current = self._settings
-            merged = RuntimeSettings(
-                rtsp_url=current.rtsp_url if rtsp_url is None else rtsp_url.strip(),
-                roi=current.roi if roi is None else normalize_roi(roi),
-            )
+            merged = self._settings
+            if rtsp_url is not None:
+                merged = replace(merged, rtsp_url=rtsp_url.strip())
+            if roi is not None:
+                merged = replace(merged, roi=normalize_roi(roi))
+            if mqtt_mode is not None:
+                merged = replace(merged, mqtt_mode=mqtt_mode)
+            if mqtt_host is not None:
+                merged = replace(merged, mqtt_host=mqtt_host.strip())
+            if mqtt_port is not None:
+                merged = replace(merged, mqtt_port=int(mqtt_port))
+            if mqtt_username is not None:
+                merged = replace(merged, mqtt_username=mqtt_username)
+            if mqtt_password is not None:
+                merged = replace(merged, mqtt_password=mqtt_password)
             self._settings = merged
             self._persist(merged)
             return merged
 
     def _persist(self, settings: RuntimeSettings) -> None:
-        payload = {"rtsp_url": settings.rtsp_url}
+        payload: dict[str, object] = {
+            "rtsp_url": settings.rtsp_url,
+            "mqtt_mode": settings.mqtt_mode,
+            "mqtt_host": settings.mqtt_host,
+            "mqtt_port": settings.mqtt_port,
+            "mqtt_username": settings.mqtt_username,
+            "mqtt_password": settings.mqtt_password,
+        }
         if settings.roi is not None:
             payload["roi"] = list(settings.roi)
         try:

@@ -47,6 +47,22 @@ def test_demo_end_to_end_status_and_slim_mqtt_payload(tmp_path: Path) -> None:
     assert SettingsStore(tmp_path).get().roi == (0.4, 0.35, 0.35, 0.35)
 
 
+def test_mqtt_settings_resolve_effective_broker(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    assert service._effective_mqtt().enabled is False  # nothing configured
+
+    service.apply_settings(mqtt={"mode": "custom", "host": "10.0.0.9", "port": 1884, "username": "u", "password": "p"})
+    effective = service._effective_mqtt()
+    assert effective.enabled is True
+    assert (effective.host, effective.port, effective.username) == ("10.0.0.9", 1884, "u")
+
+    service.apply_settings(mqtt={"mode": "disabled"})
+    assert service._effective_mqtt().enabled is False
+
+    service.apply_settings(mqtt={"mode": "auto"})
+    assert service._effective_mqtt() == service.config.mqtt
+
+
 def test_probe_demo_and_unconfigured(tmp_path: Path) -> None:
     service = make_service(tmp_path)
     result = service.probe("demo://breathing")

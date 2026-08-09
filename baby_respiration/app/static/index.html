@@ -69,8 +69,8 @@ button:disabled{opacity:.45;cursor:default}
 .btn-ghost:not(:disabled):hover{border-color:rgba(244,239,230,.28)}
 .btn-quiet{background:transparent;color:var(--ink-dim);padding:8px 12px;font-size:13px}
 .btn-quiet:hover{color:var(--ink)}
-input[type=text]{width:100%;background:var(--panel-deep);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--ink);font:15px var(--font-mono);padding:13px 15px;outline:none;transition:border-color .2s}
-input[type=text]:focus{border-color:rgba(255,201,138,.5)}
+input[type=text],input[type=password]{width:100%;background:var(--panel-deep);border:1px solid var(--line);border-radius:var(--r-sm);color:var(--ink);font:15px var(--font-mono);padding:13px 15px;outline:none;transition:border-color .2s}
+input[type=text]:focus,input[type=password]:focus{border-color:rgba(255,201,138,.5)}
 label.check{display:flex;gap:11px;align-items:flex-start;cursor:pointer;color:var(--ink-dim);font-size:14.5px}
 label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2px;flex:none}
 .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:18px}
@@ -156,7 +156,8 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
     <div class="rail" id="rail">
       <span class="st" data-s="1"><span class="dot">1</span>Welcome</span><span class="seg"></span>
       <span class="st" data-s="2"><span class="dot">2</span>Camera</span><span class="seg"></span>
-      <span class="st" data-s="3"><span class="dot">3</span>Breathing region</span>
+      <span class="st" data-s="3"><span class="dot">3</span>Breathing region</span><span class="seg"></span>
+      <span class="st" data-s="4"><span class="dot">4</span>Home Assistant</span>
     </div>
 
     <div class="step card reveal" id="step1" hidden>
@@ -217,6 +218,27 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
         <span class="hint" id="regionHint">…or drag a box over the chest and tummy.</span>
       </div>
     </div>
+    <div class="step card reveal" id="step4" hidden>
+      <h1>Connect to Home Assistant</h1>
+      <p class="sub">Readings become Home Assistant entities through MQTT. The broker bundled with Home Assistant (the Mosquitto add-on) needs zero setup — or point at a broker running anywhere else on your network.</p>
+      <label class="check"><input type="radio" name="mqmode" value="auto" checked><span><strong>Home Assistant's broker</strong> — automatic, uses the Mosquitto add-on on this box (recommended)</span></label>
+      <label class="check" style="margin-top:8px"><input type="radio" name="mqmode" value="custom"><span><strong>Custom broker</strong> — an MQTT server running elsewhere</span></label>
+      <div id="mqFields" hidden style="margin:12px 0 0 29px">
+        <input type="text" id="mqHost" placeholder="broker host, e.g. 192.168.1.10" autocomplete="off" spellcheck="false">
+        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+          <input type="text" id="mqPort" placeholder="1883" style="flex:0 0 110px;width:auto">
+          <input type="text" id="mqUser" placeholder="username (optional)" style="flex:1;width:auto">
+          <input type="password" id="mqPass" placeholder="password (optional)" style="flex:1;width:auto">
+        </div>
+      </div>
+      <label class="check" style="margin-top:8px"><input type="radio" name="mqmode" value="disabled"><span><strong>No MQTT</strong> — readings stay in this panel only</span></label>
+      <p class="msg" id="mqMsg" style="min-height:22px;margin:12px 0 0" role="status"></p>
+      <div class="actions">
+        <button class="btn-ghost" id="backTo3">Back</button>
+        <button class="btn-primary" id="saveMqtt">Save &amp; finish</button>
+        <button class="btn-quiet" id="skipMqtt">Finish without changes</button>
+      </div>
+    </div>
   </section>
 
   <!-- ══════════ DASHBOARD ══════════ -->
@@ -250,6 +272,7 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
             <span>
               <button class="btn-ghost" id="redetect">Re-detect region</button>
               <button class="btn-quiet" id="editCam">Camera…</button>
+              <button class="btn-quiet" id="editMqtt">MQTT…</button>
             </span>
             <span class="hint mono" id="roiLbl"></span>
           </div>
@@ -308,9 +331,10 @@ function setView(v,step){
   if(v==="wizard")setStep(step||1);
 }
 function setStep(n){
-  wstep=n;[1,2,3].forEach(i=>$("step"+i).hidden=i!==n);
+  wstep=n;[1,2,3,4].forEach(i=>$("step"+i).hidden=i!==n);
   document.querySelectorAll("#rail .st").forEach(el=>{const s=+el.dataset.s;el.classList.toggle("on",s===n);el.classList.toggle("done",s<n)});
   if(n===3){pendingRoi=null;roiDirty=false;$("saveRegion").disabled=true;$("scanMsg").textContent="";}
+  if(n===4){prefillMqtt();$("mqMsg").textContent="";}
 }
 
 /* ---------- shared frame + ROI drawing ---------- */
@@ -369,10 +393,43 @@ $("autoBtn").addEventListener("click",async()=>{
 $("cancelScan").addEventListener("click",()=>{post("api/scan/cancel").catch(()=>{});$("scanVeil").hidden=true;scanWasRunning=false});
 $("saveRegion").addEventListener("click",async()=>{
   const roi=pendingRoi||(status.scan&&status.scan.purpose==="user"&&status.scan.result&&status.scan.result.roi);if(!roi)return;
-  try{await post("api/settings",{roi});forced=null;pendingRoi=null;setView("dashboard");}
+  try{await post("api/settings",{roi});pendingRoi=null;if(forced){forced=null;setView("dashboard")}else setStep(4);}
   catch(e){$("scanMsg").className="msg err";$("scanMsg").textContent=e.message}
 });
 $("redetect").addEventListener("click",()=>{forced="region";setView("wizard",3)});
+$("editMqtt").addEventListener("click",()=>{forced="mqtt";setView("wizard",4)});
+$("backTo3").addEventListener("click",()=>setStep(3));
+$("skipMqtt").addEventListener("click",()=>{forced=null;setView("dashboard")});
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function prefillMqtt(){
+  const m=(status&&status.mqtt)||{};
+  const mode=m.mode||"auto";
+  document.querySelectorAll('input[name=mqmode]').forEach(el=>el.checked=el.value===mode);
+  $("mqFields").hidden=mode!=="custom";
+  if(mode==="custom"){$("mqHost").value=m.host||"";$("mqPort").value=m.port||1883}
+}
+document.querySelectorAll('input[name=mqmode]').forEach(el=>el.addEventListener("change",()=>{$("mqFields").hidden=document.querySelector('input[name=mqmode]:checked').value!=="custom"}));
+$("saveMqtt").addEventListener("click",async()=>{
+  const mode=document.querySelector('input[name=mqmode]:checked').value,msg=$("mqMsg");
+  const body={mode};
+  if(mode==="custom"){
+    body.host=$("mqHost").value.trim();body.port=parseInt($("mqPort").value,10)||1883;
+    body.username=$("mqUser").value;body.password=$("mqPass").value;
+    if(!body.host){msg.className="msg err";msg.textContent="Enter the broker host first.";return}
+  }
+  $("saveMqtt").disabled=true;
+  try{
+    await post("api/settings",{mqtt:body});
+    if(mode==="disabled"){forced=null;setView("dashboard");return}
+    msg.className="msg";msg.innerHTML='<span class="spin"></span> Connecting to the broker…';
+    for(let i=0;i<12;i++){await sleep(1000);const m=status&&status.mqtt;if(m&&m.connected){msg.textContent="Connected — Home Assistant entities are live.";await sleep(900);forced=null;setView("dashboard");return}}
+    const m=(status&&status.mqtt)||{};
+    msg.className="msg err";
+    if(mode==="auto"&&!m.enabled)msg.textContent="Home Assistant did not provide a broker — install the Mosquitto broker add-on, or choose Custom. You can also finish without MQTT.";
+    else msg.textContent="Could not connect"+(m.error?" — "+m.error:"")+". Check host/credentials, or finish anyway — the panel works without MQTT.";
+  }catch(e){msg.className="msg err";msg.textContent=e.message}
+  finally{$("saveMqtt").disabled=false}
+});
 $("editCam").addEventListener("click",()=>{forced="camera";setView("wizard",2)});
 
 /* ---------- scan progress ---------- */
@@ -427,7 +484,8 @@ function renderDash(){
   else warn.hidden=true;
   drawWave(s.waveform_y||[]);
   const PRESENCE={PRESENT:"in crib",ABSENT:"crib empty",CHECKING:"checking…",UNKNOWN:"unknown"};
-  const items=[["Presence",PRESENCE[s.presence]||"—"],["Stream",s.stream_status],["Video FPS",s.estimated_fps],["SNR",s.snr_db!=null?s.snr_db+" dB":"—"],["Signal RMS",s.signal_rms],["Window",s.window_seconds+" s"],["Complete",Math.round((s.data_completeness||0)*100)+"%"],["Calibrated",s.calibrated?"yes":"not yet"],["Movement",s.excessive_motion?"high":"calm"]];
+  const mq=s.mqtt||{};const halink=mq.mode==="disabled"||!mq.enabled?"off":(mq.connected?"connected":"connecting…");
+  const items=[["Presence",PRESENCE[s.presence]||"—"],["HA link",halink],["Stream",s.stream_status],["Video FPS",s.estimated_fps],["SNR",s.snr_db!=null?s.snr_db+" dB":"—"],["Signal RMS",s.signal_rms],["Window",s.window_seconds+" s"],["Complete",Math.round((s.data_completeness||0)*100)+"%"],["Calibrated",s.calibrated?"yes":"not yet"],["Movement",s.excessive_motion?"high":"calm"]];
   $("diag").innerHTML=items.map(([k,v])=>`<div class="stat"><b>${k}</b><span>${v??"—"}</span></div>`).join("");
 }
 function drawWave(y){

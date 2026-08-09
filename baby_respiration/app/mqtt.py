@@ -103,6 +103,20 @@ class MQTTPublisher:
         self.config = config
         self._connected = False
         self._client: mqtt.Client | None = None
+        self._last_error: str | None = None
+
+    @property
+    def connected(self) -> bool:
+        return self._connected
+
+    def state(self) -> dict[str, Any]:
+        return {
+            "enabled": self.config.enabled,
+            "connected": self._connected,
+            "host": self.config.host if self.config.enabled else "",
+            "port": self.config.port,
+            "error": self._last_error,
+        }
 
     def start(self) -> None:
         if not self.config.enabled:
@@ -122,14 +136,17 @@ class MQTTPublisher:
             client.connect_async(self.config.host, self.config.port, keepalive=30)
             client.loop_start()
         except Exception as exc:
+            self._last_error = str(exc)
             LOGGER.error("unable to start MQTT client: %s", exc)
 
     def _on_connect(self, client: mqtt.Client, userdata: Any, flags: Any, reason_code: Any, properties: Any) -> None:
         del userdata, flags, properties
         if reason_code.is_failure:
+            self._last_error = str(reason_code)
             LOGGER.error("MQTT connection rejected: %s", reason_code)
             return
         self._connected = True
+        self._last_error = None
         LOGGER.info("MQTT connected")
         client.publish(f"{self.config.base_topic}/availability", "online", qos=1, retain=True)
         for topic, payload in build_discovery_payloads(self.config).items():

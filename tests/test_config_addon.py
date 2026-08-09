@@ -35,21 +35,11 @@ def test_supervisor_mqtt_service_via_env(tmp_path: Path, monkeypatch: pytest.Mon
     assert config.mqtt.username == "addons"
 
 
-def test_custom_broker_overrides_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_topic_options_still_apply(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BABY_MQTT_HOST", "core-mosquitto")
-    config = load_addon_config(
-        write_options(
-            tmp_path,
-            mqtt_custom_broker=True,
-            mqtt_host="10.0.0.5",
-            mqtt_port=8883,
-            mqtt_username="user",
-            mqtt_password="pw",
-        )
-    )
-    assert config.mqtt.enabled is True
-    assert config.mqtt.host == "10.0.0.5"
-    assert config.mqtt.port == 8883
+    config = load_addon_config(write_options(tmp_path, mqtt_base_topic="nursery", mqtt_discovery_prefix="ha"))
+    assert config.mqtt.base_topic == "nursery"
+    assert config.mqtt.discovery_prefix == "ha"
 
 
 def test_tuning_options_are_applied(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

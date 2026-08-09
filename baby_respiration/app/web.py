@@ -31,7 +31,7 @@ class Controller(Protocol):
 
     def probe_preview(self) -> bytes | None: ...
 
-    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None) -> dict[str, Any]: ...
+    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None, mqtt: dict[str, Any] | None = None) -> dict[str, Any]: ...
 
     def start_scan(self) -> tuple[bool, str]: ...
 
@@ -124,6 +124,7 @@ def _handler(state: WebState, controller: Controller | None) -> type[BaseHTTPReq
                     result = controller.apply_settings(
                         rtsp_url=payload.get("rtsp_url"),
                         roi=payload.get("roi"),
+                        mqtt=payload.get("mqtt"),
                     )
                     self._send_json(result)
                 elif path == "/api/scan/start":

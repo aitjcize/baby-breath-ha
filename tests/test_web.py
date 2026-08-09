@@ -21,8 +21,8 @@ class FakeController:
     def probe_preview(self) -> bytes | None:
         return b"\xff\xd8fakejpeg"
 
-    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None) -> dict[str, Any]:
-        self.applied.append({"rtsp_url": rtsp_url, "roi": roi})
+    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None, mqtt: Any = None) -> dict[str, Any]:
+        self.applied.append({"rtsp_url": rtsp_url, "roi": roi, "mqtt": mqtt})
         return {"applied": True}
 
     def start_scan(self) -> tuple[bool, str]:
@@ -81,7 +81,7 @@ def test_probe_settings_and_scan(server) -> None:
 
     _, payload = request(base + "/api/settings", "POST", {"rtsp_url": "rtsp://good/stream", "roi": [0.1, 0.2, 0.3, 0.4]})
     assert payload["applied"] is True
-    assert controller.applied == [{"rtsp_url": "rtsp://good/stream", "roi": [0.1, 0.2, 0.3, 0.4]}]
+    assert controller.applied == [{"rtsp_url": "rtsp://good/stream", "roi": [0.1, 0.2, 0.3, 0.4], "mqtt": None}]
 
     _, payload = request(base + "/api/scan/start", "POST")
     assert payload["ok"] is True
