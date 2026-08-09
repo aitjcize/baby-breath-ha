@@ -144,11 +144,13 @@ def test_hold_never_delays_the_alarm() -> None:
     assert fired.state == DetectorState.NO_BREATHING_SIGNAL
     assert fired.breathing_detected is False
 
-    # An uncalibrated lock is never held.
+    # Uncalibrated locks are held too (post-drop aftershock blips): a raw
+    # lock already passed contrast/coherence/stability, so it is trustworthy.
     fresh = ConservativeClassifier(config)
-    fresh.update(estimate(breathing=True), 0)  # brief, not calibrated
+    fresh.update(estimate(breathing=True), 0)
     dropped = fresh.update(RespirationEstimate(reason="noise"), 1)
-    assert dropped.state == DetectorState.MEASUREMENT_INVALID
+    assert dropped.state == DetectorState.BREATHING
+    assert dropped.reason.startswith("holding_through_interruption")
 
 
 def test_crib_empty_punches_through_hold() -> None:

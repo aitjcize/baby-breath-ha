@@ -71,7 +71,6 @@ class ConservativeClassifier:
             hold > 0
             and self._held is not None
             and self._held_at is not None
-            and self._held.calibrated
             and now - self._held_at <= hold
         ):
             return Classification(

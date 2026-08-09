@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.14
+
+From gate-level logs of a full night (drops still surfacing as rhythm_not_stable at conf 50-55, plus 1 s aftershock blips while recalibrating):
+
+- "Recently breathing" is now a time window aligned with the detection hold, not a single-window boolean: one rough second no longer resets the relaxed re-entry thresholds and the rate-continuity escape, so irregular-breathing episodes re-lock at hysteresis floors (conf ≥47) instead of failing cold (≥55) for the whole phase.
+- The reporting hold applies to uncalibrated locks too: raw locks already pass the contrast/coherence/stability hardening, and requiring calibration made every 1 s hiccup visible during the 10 s post-drop rebuild.
+
 ## 0.3.13
 
 Stream-drop resilience — live logs showed the camera killing its RTSP session every few minutes ("RTSP frame read failed"), and reconnect gaps of 13–33 s were the remaining source of unavailable flaps:

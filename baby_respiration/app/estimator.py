@@ -36,13 +36,13 @@ class RespirationEstimator:
         self.camera = camera
         self.config = config
         self._history: deque[MotionObservation] = deque()
-        self._was_breathing = False
+        self._last_breathing_at: float | None = None
         self._selected_block: int | None = None
         self._last_peak_hz: float | None = None
 
     def clear(self) -> None:
         self._history.clear()
-        self._was_breathing = False
+        self._last_breathing_at = None
         self._selected_block = None
         self._last_peak_hz = None
 
@@ -179,7 +179,6 @@ class RespirationEstimator:
             confidence_floor -= 8.0
         observable = rms >= rms_floor and snr_db >= snr_floor
         breathing = observable and confidence >= confidence_floor
-        self._was_breathing = breathing
         return observable, breathing
 
     def add(self, observation: MotionObservation) -> None:
@@ -189,12 +188,17 @@ class RespirationEstimator:
             self._history.popleft()
 
     def estimate(self, now: float | None = None) -> RespirationEstimate:
-        was_breathing = self._was_breathing
-        self._was_breathing = False  # any early exit drops the hysteresis lock
         if not self._history:
             return RespirationEstimate()
         if now is None:
             now = self._history[-1].timestamp
+        # "Recently breathing" is a grace window aligned with the reporting
+        # hold: one rough second must not force the next windows back to cold
+        # lock-on thresholds while the physiology is still settling.
+        grace = max(self.config.detection_hold_seconds, 0.0)
+        was_breathing = (
+            self._last_breathing_at is not None and now - self._last_breathing_at <= grace
+        )
         cutoff = now - self.config.analysis_window_duration
         observations = [item for item in self._history if item.timestamp >= cutoff]
         if len(observations) < 3:
@@ -379,11 +383,9 @@ class RespirationEstimator:
         confidence = float(np.clip(confidence, 0.0, 100.0))
         if coherence_veto:
             signal_observable = breathing_signal = False
-            self._was_breathing = False
             reason = "no_coherent_breathing_region"
         elif not rhythm_stable:
             signal_observable = breathing_signal = False
-            self._was_breathing = False
             reason = "rhythm_not_stable"
         else:
             signal_observable, breathing_signal = self._apply_gates(rms, snr_db, confidence, was_breathing)
@@ -392,6 +394,7 @@ class RespirationEstimator:
             )
         if breathing_signal:
             self._last_peak_hz = peak_hz
+            self._last_breathing_at = now
 
         waveform_stride = max(1, len(filtered) // 300)
         waveform_t = (grid[::waveform_stride] - grid[-1]).round(3).tolist()
