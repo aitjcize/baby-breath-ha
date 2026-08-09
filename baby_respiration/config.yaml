@@ -1,5 +1,5 @@
 name: Baby Respiration Monitor
-version: "0.3.10"
+version: "0.3.11"
 slug: baby_respiration
 description: Experimental camera breathing-motion monitor — a secondary monitor, never a medical or life-safety device
 url: https://github.com/aitjcize/baby-breath-ha
@@ -27,6 +27,7 @@ options:
   presence_detection: true
   minimum_signal_rms: 0.001
   low_rate_threshold_bpm: 20
+  detection_hold_seconds: 10
   mqtt_base_topic: baby_respiration
   mqtt_discovery_prefix: homeassistant
 schema:
@@ -40,5 +41,6 @@ schema:
   presence_detection: bool
   minimum_signal_rms: float(0.0002,0.02)
   low_rate_threshold_bpm: int(0,60)
+  detection_hold_seconds: int(0,60)
   mqtt_base_topic: str
   mqtt_discovery_prefix: str

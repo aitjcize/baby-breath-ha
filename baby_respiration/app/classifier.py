@@ -33,14 +33,57 @@ class ConservativeClassifier:
         self._no_signal_since: float | None = None
         self._invalid_since: float | None = None
         self._calibrated = False
+        self._held: Classification | None = None
+        self._held_at: float | None = None
 
     def reset(self) -> None:
         self._breathing_since = None
         self._no_signal_since = None
         self._invalid_since = None
         self._calibrated = False
+        self._held = None
+        self._held_at = None
 
     def update(
+        self,
+        estimate: RespirationEstimate,
+        now: float,
+        presence: PresenceState = PresenceState.PRESENT,
+    ) -> Classification:
+        """Classify, then smooth reporting through brief interruptions.
+
+        The hold is an overlay on the REPORTED state only: every internal
+        timer (no-breathing countdown, calibration decay) runs from the true
+        moment of loss, so NO_BREATHING_SIGNAL fires at the same absolute time
+        with or without the hold, and alarms punch through it immediately.
+        """
+        raw = self._classify(estimate, now, presence)
+        hold = self.config.detection_hold_seconds
+        if raw.state == DetectorState.BREATHING:
+            self._held = raw
+            self._held_at = now
+            return raw
+        if raw.state in (DetectorState.NO_BREATHING_SIGNAL, DetectorState.CRIB_EMPTY):
+            self._held = None
+            self._held_at = None
+            return raw
+        if (
+            hold > 0
+            and self._held is not None
+            and self._held_at is not None
+            and self._held.calibrated
+            and now - self._held_at <= hold
+        ):
+            return Classification(
+                DetectorState.BREATHING,
+                True,
+                True,
+                f"holding_through_interruption:{raw.reason}",
+                self._held.calibrated,
+            )
+        return raw
+
+    def _classify(
         self,
         estimate: RespirationEstimate,
         now: float,

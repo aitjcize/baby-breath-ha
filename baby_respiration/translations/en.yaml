@@ -29,6 +29,9 @@ configuration:
   low_rate_threshold_bpm:
     name: Low breathing-rate threshold
     description: Turns on binary_sensor.baby_breathing_rate_low when the measured rate sits below this (breaths/min). Must be above the minimum breathing rate to ever trigger; 0 disables. Build your own notification on the sensor in Home Assistant.
+  detection_hold_seconds:
+    name: Detection hold
+    description: Once calibrated breathing is established, brief signal dropouts keep reporting it for this many seconds instead of flapping to unavailable. Alarms are never delayed by the hold. 0 disables.
   mqtt_base_topic:
     name: MQTT base topic
     description: Topic prefix for state and availability messages.

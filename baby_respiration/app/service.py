@@ -61,6 +61,7 @@ class BabyRespirationService:
         self._last_sequence = -1
         self._latest_overlay = None
         self._rate_low = False
+        self._held_bpm: float | None = None
         self._paused_preview_at = 0.0
         self._paused_preview_busy = False
         threshold = config.signal.low_rate_threshold_bpm
@@ -444,6 +445,10 @@ class BabyRespirationService:
         reconnect_count: int,
     ) -> dict[str, Any]:
         bpm = estimate.bpm if classification.state == DetectorState.BREATHING else None
+        if bpm is not None:
+            self._held_bpm = bpm
+        elif classification.state == DetectorState.BREATHING:
+            bpm = self._held_bpm  # held through a brief interruption
         active_block = None
         rects = self.extractor.block_rects
         if (

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.11
+
+- Detection hold: once calibrated breathing is established, brief dropouts (stream hiccups, twitch-corrupted windows, marginal seconds) keep reporting `BREATHING` with the last rate for `detection_hold_seconds` (default 10, option) instead of flapping to unavailable. The hold is a reporting overlay only: the no-breathing countdown and calibration decay run from the true moment of loss, so `NO_BREATHING_SIGNAL` fires at the same absolute time and punches through the hold immediately, as does `CRIB_EMPTY`.
+
 ## 0.3.10
 
 - Pausing monitoring now disconnects the RTSP stream entirely. Decoding the camera's full-rate H.264 feed is the dominant CPU cost — bigger than the analysis — and it previously kept running while paused. The panel shows a still preview refreshed every ~30 s over a brief reconnect; resuming reconnects the stream. Paused CPU now drops to near zero.

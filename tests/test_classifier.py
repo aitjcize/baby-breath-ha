@@ -10,7 +10,7 @@ def estimate(*, breathing: bool, observable: bool = True) -> RespirationEstimate
 
 
 def test_no_signal_requires_calibration_quality_and_timeout() -> None:
-    config = SignalConfig(baseline_required_duration=2, no_breath_timeout=3, measurement_invalid_timeout=2)
+    config = SignalConfig(baseline_required_duration=2, no_breath_timeout=3, measurement_invalid_timeout=2, detection_hold_seconds=0)
     classifier = ConservativeClassifier(config)
     assert classifier.update(estimate(breathing=True), 0).state == DetectorState.BREATHING
     assert classifier.update(estimate(breathing=True), 2.1).calibrated
@@ -24,7 +24,7 @@ def test_no_signal_requires_calibration_quality_and_timeout() -> None:
 
 
 def test_low_snr_is_invalid_not_no_breathing() -> None:
-    config = SignalConfig(baseline_required_duration=0, no_breath_timeout=0)
+    config = SignalConfig(baseline_required_duration=0, no_breath_timeout=0, detection_hold_seconds=0)
     classifier = ConservativeClassifier(config)
     classifier.update(estimate(breathing=True), 0)
     result = classifier.update(estimate(breathing=False, observable=False), 10)

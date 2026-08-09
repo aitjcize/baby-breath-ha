@@ -44,6 +44,9 @@ class SignalConfig:
     maximum_interpolation_gap: float = 1.0
     baseline_required_duration: float = 10.0
     presence_enabled: bool = True
+    # Once calibrated breathing is established, brief dropouts keep reporting
+    # BREATHING for this long; alarms punch through immediately. 0 disables.
+    detection_hold_seconds: float = 10.0
     # Flag (not alarm) when a measured rate sits below this; 0 disables.
     # Rates below min_bpm are unmeasurable and surface as signal loss instead.
     low_rate_threshold_bpm: float = 20.0
@@ -147,6 +150,7 @@ def load_addon_config(options_path: str | Path = ADDON_OPTIONS_PATH) -> AppConfi
         no_breath_timeout=float(raw.get("no_breath_timeout", 12)),
         minimum_signal_rms=float(raw.get("minimum_signal_rms", 0.001)),
         low_rate_threshold_bpm=float(raw.get("low_rate_threshold_bpm", 20)),
+        detection_hold_seconds=float(raw.get("detection_hold_seconds", 10)),
         presence_enabled=bool(raw.get("presence_detection", True)),
     )
     config = AppConfig(

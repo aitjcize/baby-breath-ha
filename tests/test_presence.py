@@ -108,8 +108,60 @@ def test_disabled_tracker_always_present() -> None:
     assert not tracker.wants_scan(3.0)
 
 
+def test_detection_hold_smooths_brief_interruptions() -> None:
+    config = SignalConfig(baseline_required_duration=2, no_breath_timeout=30, detection_hold_seconds=10)
+    classifier = ConservativeClassifier(config)
+    classifier.update(estimate(breathing=True), 0)
+    classifier.update(estimate(breathing=True), 2.1)  # calibrated
+
+    # A brief quality dropout is held as BREATHING (with the hold reason).
+    held = classifier.update(RespirationEstimate(reason="stream_reconnecting"), 5)
+    assert held.state == DetectorState.BREATHING
+    assert held.breathing_detected is True
+    assert held.reason.startswith("holding_through_interruption")
+
+    # Recovery within the hold: seamless.
+    assert classifier.update(estimate(breathing=True), 8).state == DetectorState.BREATHING
+
+    # A dropout longer than the hold surfaces honestly.
+    classifier.update(RespirationEstimate(reason="stream_reconnecting"), 20)
+    late = classifier.update(RespirationEstimate(reason="stream_reconnecting"), 31)
+    assert late.state == DetectorState.MEASUREMENT_INVALID
+
+
+def test_hold_never_delays_the_alarm() -> None:
+    """Internal timers run from the true loss: NO_BREATHING_SIGNAL fires at
+    the same absolute time and punches through an active hold."""
+    config = SignalConfig(baseline_required_duration=2, no_breath_timeout=12, detection_hold_seconds=60)
+    classifier = ConservativeClassifier(config)
+    classifier.update(estimate(breathing=True), 0)
+    classifier.update(estimate(breathing=True), 2.1)  # calibrated
+
+    # Signal missing from t=10; hold (60 s) far exceeds the 12 s timeout.
+    assert classifier.update(estimate(breathing=False), 10).state == DetectorState.BREATHING  # held
+    assert classifier.update(estimate(breathing=False), 20).state == DetectorState.BREATHING  # held
+    fired = classifier.update(estimate(breathing=False), 22.5)  # 12.5 s after loss
+    assert fired.state == DetectorState.NO_BREATHING_SIGNAL
+    assert fired.breathing_detected is False
+
+    # An uncalibrated lock is never held.
+    fresh = ConservativeClassifier(config)
+    fresh.update(estimate(breathing=True), 0)  # brief, not calibrated
+    dropped = fresh.update(RespirationEstimate(reason="noise"), 1)
+    assert dropped.state == DetectorState.MEASUREMENT_INVALID
+
+
+def test_crib_empty_punches_through_hold() -> None:
+    config = SignalConfig(baseline_required_duration=2, detection_hold_seconds=60)
+    classifier = ConservativeClassifier(config)
+    classifier.update(estimate(breathing=True), 0)
+    classifier.update(estimate(breathing=True), 2.1)
+    empty = classifier.update(estimate(breathing=False), 5, PresenceState.ABSENT)
+    assert empty.state == DetectorState.CRIB_EMPTY
+
+
 def test_classifier_gates_alarm_on_presence() -> None:
-    config = SignalConfig(baseline_required_duration=2, no_breath_timeout=3)
+    config = SignalConfig(baseline_required_duration=2, no_breath_timeout=3, detection_hold_seconds=0)
     classifier = ConservativeClassifier(config)
     classifier.update(estimate(breathing=True), 0)
     classifier.update(estimate(breathing=True), 2.1)  # calibrated

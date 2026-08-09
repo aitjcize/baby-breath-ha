@@ -107,6 +107,7 @@ While off, the camera stream is fully disconnected — decoding it is the larges
 | `minimum_confidence` | Quality score required before motion counts as breathing. |
 | `no_breath_timeout` | Seconds of missing signal (while calibrated and observable) before `NO_BREATHING_SIGNAL`. |
 | `presence_detection` | Pause monitoring when the crib is confirmed empty. Off = always treat the crib as occupied. |
+| `detection_hold_seconds` | Grace period: established breathing keeps reporting through brief dropouts (stream hiccups, twitch-corrupted windows) instead of flapping to unavailable. Internal alarm timers keep running from the true loss, so `NO_BREATHING_SIGNAL` is never delayed and punches through immediately. |
 | `low_rate_threshold_bpm` | Flags `baby_breathing_rate_low` when the measured rate is below this (0 disables). Must exceed `min_bpm` — slower rates are unmeasurable and surface as signal loss instead. Small hysteresis (+2 BPM to clear) prevents flapping; add a `for:` duration in your automation. |
 | `minimum_signal_rms` | Band-passed motion amplitude (px RMS) required before the signal counts as observable. A clearly concentrated spectral peak with strong SNR overrides this down to 30% of the value — unambiguous rhythm is not vetoed for being small. |
 | `mqtt_base_topic` / `mqtt_discovery_prefix` | Topic naming for power users. The broker itself is chosen in the panel's Home Assistant step. |
