@@ -62,6 +62,7 @@ class BabyRespirationService:
         self._latest_overlay = None
         self._rate_low = False
         self._held_bpm: float | None = None
+        self._last_logged_state: str | None = None
         self._paused_preview_at = 0.0
         self._paused_preview_busy = False
         threshold = config.signal.low_rate_threshold_bpm
@@ -296,12 +297,32 @@ class BabyRespirationService:
                     self.latest_status = status
                     self.web_state.update(status, jpeg)
                     self.mqtt.publish({key: value for key, value in status.items() if key not in _WEB_ONLY_STATUS_FIELDS})
+                    if classification.state.value != self._last_logged_state:
+                        LOGGER.info(
+                            "STATE CHANGE %s -> %s (reason=%s bpm=%s conf=%.1f rms=%.5f snr=%s conc=%.3f block=%s presence=%s stream=%s)",
+                            self._last_logged_state,
+                            classification.state.value,
+                            classification.reason,
+                            status["bpm"],
+                            estimate.confidence,
+                            estimate.signal_rms,
+                            estimate.snr_db,
+                            estimate.peak_concentration,
+                            estimate.selected_block,
+                            presence_state.value,
+                            snapshot.status,
+                        )
+                        self._last_logged_state = classification.state.value
                     LOGGER.info(
-                        "state=%s valid=%s bpm=%s confidence=%.1f stream=%s reason=%s",
+                        "state=%s valid=%s bpm=%s conf=%.1f rms=%.5f snr=%s conc=%.3f block=%s stream=%s reason=%s",
                         classification.state.value,
                         classification.measurement_valid,
                         status["bpm"],
                         estimate.confidence,
+                        estimate.signal_rms,
+                        estimate.snr_db,
+                        estimate.peak_concentration,
+                        estimate.selected_block,
                         snapshot.status,
                         classification.reason,
                     )

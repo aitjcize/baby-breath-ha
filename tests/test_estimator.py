@@ -179,6 +179,39 @@ def test_pure_noise_blocks_select_nothing() -> None:
     assert not result.breathing_signal
 
 
+def test_rate_drift_keeps_the_lock() -> None:
+    """Infant rates drift (REM dynamics, observed 24->30 BPM within a minute).
+    Split halves legitimately disagree mid-transition; temporal continuity
+    with the locked rate must keep detection alive."""
+    rng = np.random.default_rng(23)
+    camera = CameraConfig(processing_fps=5.0)
+    estimator = RespirationEstimator(camera, SignalConfig(minimum_confidence=50.0))
+    phase = 0.0
+    timestamp = 0.0
+
+    def feed(seconds: float, hz_start: float, hz_end: float) -> None:
+        nonlocal phase, timestamp
+        steps = int(seconds * 5)
+        for index in range(steps):
+            timestamp += 0.2
+            hz = hz_start + (hz_end - hz_start) * index / max(steps - 1, 1)
+            phase += 2 * np.pi * hz * 0.2
+            breath = 0.012 * np.sin(phase)
+            blocks = list(rng.normal(0, 0.0004, size=12))
+            blocks[5] += breath + rng.normal(0, 0.002)
+            blocks[6] += 0.6 * breath + rng.normal(0, 0.002)
+            estimator.add(make_block_observation(timestamp, blocks))
+
+    feed(30.0, 26 / 60, 26 / 60)  # stable lock first
+    assert estimator.estimate(timestamp).breathing_signal
+    # sweep 22 -> 32 BPM; evaluate every 2 s through the transition
+    start_hz, end_hz = 22 / 60, 32 / 60
+    for step in range(15):
+        feed(2.0, start_hz + (end_hz - start_hz) * step / 14, start_hz + (end_hz - start_hz) * (step + 1) / 14)
+        result = estimator.estimate(timestamp)
+        assert result.breathing_signal, f"lock lost at step {step}: {result.reason}"
+
+
 def test_spatially_correlated_camera_noise_never_detects() -> None:
     """Optical-flow noise correlates neighbouring blocks by construction
     (overlapping estimation windows), so neighbour correlation alone cannot

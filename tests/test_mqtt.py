@@ -31,6 +31,29 @@ def test_discovery_payloads_are_valid_and_include_required_entities() -> None:
     assert switch["command_topic"] == "baby_respiration/monitoring/set"
 
 
+def test_availability_publishes_before_state_when_going_offline() -> None:
+    from app.mqtt import MQTTPublisher
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def publish(self, topic, payload=None, qos=0, retain=False):
+            self.calls.append(topic)
+
+    publisher = MQTTPublisher(MQTTConfig())
+    fake = FakeClient()
+    publisher._client = fake  # type: ignore[assignment]
+    publisher._connected = True
+
+    publisher.publish({"measurement_valid": False, "presence": "UNKNOWN"})
+    assert fake.calls.index("baby_respiration/measurement_availability") < fake.calls.index("baby_respiration/state")
+
+    fake.calls.clear()
+    publisher.publish({"measurement_valid": True, "presence": "PRESENT"})
+    assert fake.calls.index("baby_respiration/state") < fake.calls.index("baby_respiration/measurement_availability")
+
+
 def test_monitoring_command_parsing() -> None:
     from types import SimpleNamespace
 

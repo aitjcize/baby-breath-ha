@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.12
+
+Anti-flap round from live logs (real baby, rate drifting 24-30 BPM within a minute):
+
+- Rhythm stability no longer penalizes genuine rate drift: while locked, a peak within 15% of the previously locked rate counts as stable even when the window halves disagree (REM transitions tripped the ±20% split-half tolerance, now ±25%). Cold lock-on still requires half-agreement, so the empty-bed defense is unchanged.
+- One drop is now one transition in HA history: availabilities going offline publish before the state JSON, eliminating the momentary Off between On and Unavailable.
+- Logs: every per-second line now carries the gate values (rms/snr/concentration/selected block), and state transitions log an explicit STATE CHANGE line with the full gate snapshot — flap diagnosis no longer needs guesswork.
+
 ## 0.3.11
 
 - Detection hold: once calibrated breathing is established, brief dropouts (stream hiccups, twitch-corrupted windows, marginal seconds) keep reporting `BREATHING` with the last rate for `detection_hold_seconds` (default 10, option) instead of flapping to unavailable. The hold is a reporting overlay only: the no-breathing countdown and calibration decay run from the true moment of loss, so `NO_BREATHING_SIGNAL` fires at the same absolute time and punches through the hold immediately, as does `CRIB_EMPTY`.

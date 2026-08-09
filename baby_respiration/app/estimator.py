@@ -38,11 +38,13 @@ class RespirationEstimator:
         self._history: deque[MotionObservation] = deque()
         self._was_breathing = False
         self._selected_block: int | None = None
+        self._last_peak_hz: float | None = None
 
     def clear(self) -> None:
         self._history.clear()
         self._was_breathing = False
         self._selected_block = None
+        self._last_peak_hz = None
 
     @staticmethod
     def _block_matrix(valid: list[MotionObservation]) -> tuple[np.ndarray, tuple[int, int]] | None:
@@ -348,8 +350,12 @@ class RespirationEstimator:
                 for segment in (filtered[:half], filtered[-half:]):
                     spectrum = np.abs(np.fft.rfft(segment * window))
                     peaks.append(float(half_freqs[np.flatnonzero(half_band)[np.argmax(spectrum[half_band])]]))
-                tolerance = max(0.2 * max(peaks), 1.5 * (half_freqs[1] - half_freqs[0]))
+                tolerance = max(0.25 * max(peaks), 1.5 * (half_freqs[1] - half_freqs[0]))
                 rhythm_stable = abs(peaks[0] - peaks[1]) <= tolerance
+                if not rhythm_stable and was_breathing and self._last_peak_hz:
+                    # A locked rate drifting (REM dynamics) is stable rhythm:
+                    # the halves disagree, but the peak tracks the known rate.
+                    rhythm_stable = abs(peak_hz - self._last_peak_hz) <= 0.15 * self._last_peak_hz
 
         peak_mask = band_mask & (np.abs(frequencies - peak_hz) <= 0.12)
         band_power = float(np.sum(psd[band_mask]))
@@ -384,6 +390,8 @@ class RespirationEstimator:
             reason = "breathing_signal" if breathing_signal else (
                 "signal_snr_too_low" if not signal_observable else "periodicity_confidence_low"
             )
+        if breathing_signal:
+            self._last_peak_hz = peak_hz
 
         waveform_stride = max(1, len(filtered) // 300)
         waveform_t = (grid[::waveform_stride] - grid[-1]).round(3).tolist()

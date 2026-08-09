@@ -198,17 +198,20 @@ class MQTTPublisher:
     def publish(self, state: dict[str, Any]) -> None:
         if not self._client or not self._connected:
             return
+        measurement_online = bool(state.get("measurement_valid"))
+        presence_online = state.get("presence") in ("PRESENT", "ABSENT")
+        # Publish availabilities that are going OFFLINE before the state JSON:
+        # otherwise consumers render the momentary OFF from the state payload
+        # before the unavailable arrives, turning one drop into two flaps.
+        if not measurement_online:
+            self._client.publish(f"{self.config.base_topic}/measurement_availability", "offline", qos=1, retain=True)
+        if not presence_online:
+            self._client.publish(f"{self.config.base_topic}/presence_availability", "offline", qos=1, retain=True)
         self._client.publish(f"{self.config.base_topic}/state", json.dumps(state, allow_nan=False, separators=(",", ":")), qos=0, retain=True)
-        availability = "online" if state.get("measurement_valid") else "offline"
-        self._client.publish(f"{self.config.base_topic}/measurement_availability", availability, qos=1, retain=True)
-        # The in-crib binary sensor is only meaningful once presence is decided.
-        presence_known = state.get("presence") in ("PRESENT", "ABSENT")
-        self._client.publish(
-            f"{self.config.base_topic}/presence_availability",
-            "online" if presence_known else "offline",
-            qos=1,
-            retain=True,
-        )
+        if measurement_online:
+            self._client.publish(f"{self.config.base_topic}/measurement_availability", "online", qos=1, retain=True)
+        if presence_online:
+            self._client.publish(f"{self.config.base_topic}/presence_availability", "online", qos=1, retain=True)
 
     def stop(self) -> None:
         if not self._client:
