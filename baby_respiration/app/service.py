@@ -26,6 +26,9 @@ LOGGER = logging.getLogger(__name__)
 _WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi", "roi_suggestion", "mqtt", "active_block")
 
 PROBE_PREVIEW_WIDTH = 640
+# While paused the stream is disconnected (decoding it is the dominant CPU
+# cost); a short-lived connection refreshes the panel preview at this cadence.
+PAUSED_PREVIEW_INTERVAL = 30.0
 
 
 class BabyRespirationService:
@@ -58,6 +61,8 @@ class BabyRespirationService:
         self._last_sequence = -1
         self._latest_overlay = None
         self._rate_low = False
+        self._paused_preview_at = 0.0
+        self._paused_preview_busy = False
         threshold = config.signal.low_rate_threshold_bpm
         if 0 < threshold <= config.signal.min_bpm:
             LOGGER.warning(
@@ -220,7 +225,8 @@ class BabyRespirationService:
             except OSError as exc:
                 LOGGER.error("web UI could not start: %s", exc)
         self.mqtt.start()
-        self.source.start()
+        if self._monitoring:
+            self.source.start()
         interval = 1.0 / self._camera.processing_fps
         next_tick = time.monotonic()
         last_publish = 0.0
@@ -235,11 +241,15 @@ class BabyRespirationService:
                 observation_added = False
 
                 if not self._monitoring:
+                    if (
+                        self.camera_configured
+                        and not self._paused_preview_busy
+                        and now - self._paused_preview_at >= PAUSED_PREVIEW_INTERVAL
+                    ):
+                        self._paused_preview_at = now
+                        self._paused_preview_busy = True
+                        threading.Thread(target=self._refresh_paused_preview, name="paused-preview", daemon=True).start()
                     if now - last_publish >= 1.0:
-                        if snapshot.frame is not None and snapshot.sequence != self._last_sequence:
-                            self._last_sequence = snapshot.sequence
-                            display, _ = self.extractor._prepare(snapshot.frame)
-                            self._latest_overlay = display
                         status = self._make_off_status(snapshot.status, snapshot.reconnect_count)
                         jpeg = self._encode_overlay(self._latest_overlay, status)
                         self.latest_status = status
@@ -362,6 +372,13 @@ class BabyRespirationService:
                 self.presence.reset()
                 self._roi_suggestion = None
                 self._rate_low = False
+                if enabled:
+                    self.source.start()
+                    self._last_sequence = -1
+                else:
+                    # Stream decode is the dominant CPU cost; drop it while paused.
+                    self.source.stop()
+                    self._paused_preview_at = time.monotonic()
         if any(key.startswith("mqtt_") for key in pending):
             new_config = self._effective_mqtt()
             if new_config != self.mqtt.config:
@@ -381,7 +398,8 @@ class BabyRespirationService:
             self.scanner.cancel()
             self.source.stop()
             self.source = self._build_source(new_url)
-            self.source.start()
+            if self._monitoring:
+                self.source.start()
             self._last_sequence = -1
             self._latest_overlay = None
         self.extractor = DenseOpticalFlowExtractor(self._camera, self.config.signal)
@@ -473,6 +491,23 @@ class BabyRespirationService:
             "waveform_t": estimate.waveform_t,
             "waveform_y": estimate.waveform_y,
         }
+
+    def _refresh_paused_preview(self) -> None:
+        """Grab one frame over a short-lived connection (worker thread)."""
+        try:
+            url = self._camera.rtsp_url
+            if url.startswith("demo:"):
+                frame = SyntheticFrameSource().render(0.0)
+            else:
+                result = probe_stream(url, open_timeout_ms=4000, read_timeout_ms=4000)
+                frame = result.frame if result.ok else None
+            if frame is not None:
+                display, _ = self.extractor._prepare(frame)
+                self._latest_overlay = display
+        except Exception:
+            LOGGER.exception("paused preview refresh failed")
+        finally:
+            self._paused_preview_busy = False
 
     def _make_off_status(self, stream_status: str, reconnect_count: int) -> dict[str, Any]:
         return {

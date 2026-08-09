@@ -81,7 +81,24 @@ def test_monitoring_pause_and_resume(tmp_path: Path) -> None:
 
     assert any(p.get("state") == "MONITORING_OFF" and p.get("monitoring") is False for p in published)
     assert service.latest_status["monitoring"] is True  # resumed and processing
+    assert service.latest_status["stream_status"] == "connected"  # source restarted on resume
     assert SettingsStore(tmp_path).get().monitoring_enabled is True
+
+
+def test_paused_service_never_starts_the_stream(tmp_path: Path) -> None:
+    store = SettingsStore(tmp_path)
+    store.update(rtsp_url="demo://breathing", monitoring_enabled=False)
+    service = BabyRespirationService(
+        AppConfig(mqtt=MQTTConfig(enabled=False), debug=DebugConfig(enabled=False)),
+        settings_store=store,
+    )
+    thread = threading.Thread(target=service.run, kwargs={"run_seconds": 2.0})
+    thread.start()
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    # the decoder thread must never have been spun up while paused
+    assert service.source._thread is None
+    assert service.latest_status["state"] == "MONITORING_OFF"
 
 
 def test_rate_low_flag_with_hysteresis(tmp_path: Path) -> None:

@@ -306,7 +306,7 @@ const REASONS={
   observable_periodic_respiration_signal_absent_after_timeout:"Video is clear but shows no breathing rhythm — check your baby directly",
   roi_changed_recalibrating:"Region changed — recalibrating",
   motion_extraction_error:"Video processing error",
-  monitoring_disabled:"Turn monitoring on when your baby is asleep — here or with the Home Assistant switch.",
+  monitoring_disabled:"Monitoring is off — the camera stream is disconnected to save CPU; the picture refreshes every 30 s. Turn it on here or with the Home Assistant switch.",
 };
 const prettyReason=r=>{if(!r)return"";if(r.startsWith("respiration_signal_missing_pending_timeout"))return"Signal faded — confirming…";return REASONS[r]||r.replace(/_/g," ")};
 

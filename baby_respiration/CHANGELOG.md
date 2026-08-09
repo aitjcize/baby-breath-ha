@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.10
+
+- Pausing monitoring now disconnects the RTSP stream entirely. Decoding the camera's full-rate H.264 feed is the dominant CPU cost — bigger than the analysis — and it previously kept running while paused. The panel shows a still preview refreshed every ~30 s over a brief reconnect; resuming reconnects the stream. Paused CPU now drops to near zero.
+- Docs tip: use the camera's low-resolution substream if available; decode cost dwarfs analysis cost.
+
 ## 0.3.9
 
 - Camera-card buttons (Edit region / Camera / MQTT / Pause) fit on a single row: compact styling and shorter Pause/Resume labels.

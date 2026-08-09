@@ -95,7 +95,7 @@ Monitoring only makes sense while the baby is asleep. Automate `switch.baby_moni
   action: [{service: switch.turn_on, target: {entity_id: switch.baby_monitoring}}]
 ```
 
-While off, the panel still shows live video, and re-enabling starts a fresh calibration.
+While off, the camera stream is fully disconnected — decoding it is the largest CPU cost, bigger than the analysis itself — and the panel shows a still preview refreshed every ~30 s. Re-enabling reconnects and starts a fresh calibration.
 
 ## Options
 
@@ -115,7 +115,7 @@ The camera URL and measurement region are set in the panel, not in the options, 
 
 ## Tips and limitations
 
-- Prefer a fixed, stable camera mount; set the camera stream to a modest resolution (the add-on processes at 320 px wide anyway).
+- Prefer a fixed, stable camera mount; if your camera offers a low-resolution substream URL, use it — H.264 decode of the main stream is typically the largest CPU cost, ahead of the analysis (which processes at 320 px wide anyway).
 - Bedding, caregiver motion, camera vibration, IR mode switches, autofocus, and video compression can all dominate chest motion.
 - The algorithm measures image motion, not airflow or oxygenation.
 - Thresholds are camera- and scene-specific: validate across lighting modes, sleep positions, and clothing before trusting trends.
