@@ -32,7 +32,7 @@ class SignalConfig:
     minimum_valid_window_duration: float = 15.0
     minimum_confidence: float = 55.0
     no_breath_timeout: float = 12.0
-    measurement_invalid_timeout: float = 8.0
+    measurement_invalid_timeout: float = 20.0
     excessive_motion_threshold: float = 1.5
     minimum_signal_rms: float = 0.001
     minimum_snr_db: float = 3.0
@@ -46,7 +46,7 @@ class SignalConfig:
     presence_enabled: bool = True
     # Once calibrated breathing is established, brief dropouts keep reporting
     # BREATHING for this long; alarms punch through immediately. 0 disables.
-    detection_hold_seconds: float = 10.0
+    detection_hold_seconds: float = 15.0
     # Flag (not alarm) when a measured rate sits below this; 0 disables.
     # Rates below min_bpm are unmeasurable and surface as signal loss instead.
     low_rate_threshold_bpm: float = 20.0

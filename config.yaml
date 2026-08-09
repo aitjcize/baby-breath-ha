@@ -20,7 +20,7 @@ signal:
   minimum_valid_window_duration: 15
   minimum_confidence: 55
   no_breath_timeout: 12
-  measurement_invalid_timeout: 8
+  measurement_invalid_timeout: 20
   excessive_motion_threshold: 1.5
   minimum_signal_rms: 0.001
   low_rate_threshold_bpm: 20

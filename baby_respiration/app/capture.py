@@ -140,6 +140,7 @@ class RTSPFrameSource:
             self._last_error = error
 
     def _run(self) -> None:
+        failures = 0
         while not self._stop_event.is_set():
             capture: CaptureLike | None = None
             try:
@@ -148,6 +149,7 @@ class RTSPFrameSource:
                 if not capture.isOpened():
                     raise ConnectionError("could not open RTSP stream")
                 self._set_status("connected")
+                failures = 0
                 LOGGER.info("RTSP stream connected")
 
                 while not self._stop_event.is_set():
@@ -161,16 +163,21 @@ class RTSPFrameSource:
                         self._status = "connected"
                         self._last_error = None
             except Exception as exc:  # capture backends raise several exception types
+                failures += 1
                 with self._lock:
                     self._status = "reconnecting"
                     self._last_error = str(exc)
                     self._reconnect_count += 1
-                LOGGER.warning("RTSP unavailable (%s); reconnecting in %.1fs", exc, self.reconnect_interval)
             finally:
                 if capture is not None:
                     capture.release()
 
-            self._stop_event.wait(self.reconnect_interval)
+            # Cameras drop sessions routinely; retry almost immediately and
+            # back off toward the configured interval only on repeated failure.
+            delay = min(self.reconnect_interval, 0.5 * (2 ** min(max(failures - 1, 0), 4)))
+            if failures:
+                LOGGER.warning("RTSP unavailable (%s); reconnecting in %.1fs", self._last_error, delay)
+            self._stop_event.wait(delay)
 
 
 class SyntheticFrameSource:

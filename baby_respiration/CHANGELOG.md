@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.13
+
+Stream-drop resilience — live logs showed the camera killing its RTSP session every few minutes ("RTSP frame read failed"), and reconnect gaps of 13–33 s were the remaining source of unavailable flaps:
+
+- Reconnects start after 0.5 s (doubling toward the configured `reconnect_interval` only on repeated failures) instead of a fixed 5 s wait.
+- `detection_hold_seconds` default 10 → 15: a typical reconnect-plus-refill gap now fits inside the hold, so brief stream drops no longer reach Home Assistant.
+- `measurement_invalid_timeout` default 8 → 20 s: calibration (no-breathing alarm arming) survives a reconnect instead of resetting on every gap.
+
 ## 0.3.12
 
 Anti-flap round from live logs (real baby, rate drifting 24-30 BPM within a minute):

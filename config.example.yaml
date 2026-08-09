@@ -19,7 +19,7 @@ signal:
   minimum_confidence: 55
   no_breath_timeout: 12
   # Seconds before a learned good-signal baseline is discarded after invalid video.
-  measurement_invalid_timeout: 8
+  measurement_invalid_timeout: 20
   # Median global optical-flow pixels per processed frame.
   excessive_motion_threshold: 1.5
   minimum_signal_rms: 0.001
