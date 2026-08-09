@@ -196,6 +196,7 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
     <div class="step wide card reveal" id="step3" hidden>
       <h1>Find the breathing region</h1>
       <p class="sub">Auto-detect watches ~30 seconds of video for periodic breathing-band motion and suggests where to measure — it works in night vision too. You can always drag the box yourself.</p>
+      <p class="sub" style="color:var(--coral)"><strong>Keep the box small and on your baby only.</strong> A box that includes bedding dilutes the signal, and one that includes a co-sleeping adult may measure <em>their</em> breathing instead of your baby's.</p>
       <div class="viewer" id="regionViewer">
         <img id="regionImg" alt="Live camera frame">
         <canvas id="regionCanvas" class="draw" aria-label="Drag to select the breathing region"></canvas>
@@ -253,6 +254,7 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
             <span class="hint mono" id="roiLbl"></span>
           </div>
           <p class="msg" id="suggestHint" hidden style="margin:10px 0 0;font-size:13.5px"></p>
+          <p id="roiWarn" hidden style="margin:10px 0 0;font-size:13.5px;color:var(--amber)"></p>
         </div>
         <div class="diag" id="diag"></div>
       </div>
@@ -334,7 +336,7 @@ function renderDashCanvas(){
   const pt=e=>{const r=cv.getBoundingClientRect();return[Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))]};
   cv.addEventListener("pointerdown",e=>{start=pt(e);cv.setPointerCapture(e.pointerId)});
   cv.addEventListener("pointermove",e=>{if(!start)return;const p=pt(e);pendingRoi=[Math.min(start[0],p[0]),Math.min(start[1],p[1]),Math.abs(p[0]-start[0]),Math.abs(p[1]-start[1])];roiDirty=true;renderRegionCanvas()});
-  cv.addEventListener("pointerup",e=>{if(!start)return;start=null;if(pendingRoi&&pendingRoi[2]>0.02&&pendingRoi[3]>0.02){$("saveRegion").disabled=false;$("scanMsg").className="msg";$("scanMsg").textContent="Region selected — save it when it hugs the chest and tummy."}else{pendingRoi=null;renderRegionCanvas()}});
+  cv.addEventListener("pointerup",e=>{if(!start)return;start=null;if(pendingRoi&&pendingRoi[2]>0.02&&pendingRoi[3]>0.02){$("saveRegion").disabled=false;const area=pendingRoi[2]*pendingRoi[3],msg=$("scanMsg");if(area>0.25){msg.className="msg err";msg.textContent=`This box covers ${Math.round(area*100)}% of the image — mostly-static pixels will drown out the breathing motion. Tighten it around the chest and tummy.`}else{msg.className="msg";msg.textContent="Region selected — save it when it hugs the chest and tummy."}}else{pendingRoi=null;renderRegionCanvas()}});
 })();
 
 /* ---------- wizard wiring ---------- */
@@ -385,7 +387,7 @@ function renderScan(){
     $("scanVeil").hidden=true;
     if(scanWasRunning){ // just finished
       scanWasRunning=false;const msg=$("scanMsg");
-      if(scan.state==="done"&&scan.result){msg.className="msg";msg.textContent=`Found periodic motion at ~${scan.result.bpm} breaths/min (quality ${scan.result.quality}%). Adjust the box if needed, then save.`;$("saveRegion").disabled=false}
+      if(scan.state==="done"&&scan.result){msg.className="msg";msg.textContent=`Found periodic motion at ~${scan.result.bpm} breaths/min (quality ${scan.result.quality}%). Check the box is on your baby — not bedding or another sleeper — then save.`;$("saveRegion").disabled=false}
       else if(scan.state==="failed"){msg.className="msg err";msg.textContent={
         excessive_motion_during_scan:"Too much movement during the scan — try again when the room is calm.",
         too_few_frames:"The camera delivered too few frames — check the connection and retry.",
@@ -420,6 +422,9 @@ function renderDash(){
   const hint=$("suggestHint");
   if(s.roi_suggestion){hint.hidden=false;hint.textContent=`Breathing found outside your region (~${Math.round(s.roi_suggestion.bpm)} BPM) — consider Re-detect.`}
   else hint.hidden=true;
+  const area=(s.roi&&s.roi[2]*s.roi[3])||0,warn=$("roiWarn");
+  if(area>0.25){warn.hidden=false;warn.textContent=`⚠ Your region covers ${Math.round(area*100)}% of the image — static pixels drown out breathing motion, and a co-sleeping adult inside the box could be measured instead of your baby. Tighten it around the baby's chest and tummy.`}
+  else warn.hidden=true;
   drawWave(s.waveform_y||[]);
   const PRESENCE={PRESENT:"in crib",ABSENT:"crib empty",CHECKING:"checking…",UNKNOWN:"unknown"};
   const items=[["Presence",PRESENCE[s.presence]||"—"],["Stream",s.stream_status],["Video FPS",s.estimated_fps],["SNR",s.snr_db!=null?s.snr_db+" dB":"—"],["Signal RMS",s.signal_rms],["Window",s.window_seconds+" s"],["Complete",Math.round((s.data_completeness||0)*100)+"%"],["Calibrated",s.calibrated?"yes":"not yet"],["Movement",s.excessive_motion?"high":"calm"]];

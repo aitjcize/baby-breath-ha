@@ -137,6 +137,13 @@ class BabyRespirationService:
             update["rtsp_url"] = rtsp_url.strip()
         if roi is not None:
             update["roi"] = normalize_roi(roi)
+            area = update["roi"][2] * update["roi"][3]
+            if area > 0.25:
+                LOGGER.warning(
+                    "configured region covers %.0f%% of the frame; large regions dilute "
+                    "the breathing signal and may capture a co-sleeping adult",
+                    area * 100,
+                )
         if not update:
             raise ValueError("nothing to update")
         self.settings.update(**update)

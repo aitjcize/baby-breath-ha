@@ -34,7 +34,7 @@ class SignalConfig:
     no_breath_timeout: float = 12.0
     measurement_invalid_timeout: float = 8.0
     excessive_motion_threshold: float = 1.5
-    minimum_signal_rms: float = 0.003
+    minimum_signal_rms: float = 0.001
     minimum_snr_db: float = 3.0
     minimum_image_contrast: float = 3.0
     minimum_sharpness: float = 1.0
@@ -139,6 +139,7 @@ def load_addon_config(options_path: str | Path = ADDON_OPTIONS_PATH) -> AppConfi
         max_bpm=float(raw.get("max_bpm", 90)),
         minimum_confidence=float(raw.get("minimum_confidence", 55)),
         no_breath_timeout=float(raw.get("no_breath_timeout", 12)),
+        minimum_signal_rms=float(raw.get("minimum_signal_rms", 0.001)),
         presence_enabled=bool(raw.get("presence_detection", True)),
     )
     config = AppConfig(

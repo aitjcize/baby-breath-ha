@@ -18,6 +18,10 @@ Open the **Baby Respiration** panel in the sidebar. The wizard walks you through
 2. **Camera** — paste your camera's RTSP URL (found in the camera app under RTSP/ONVIF/local streaming) and test the connection; a preview frame confirms you have the right camera. No camera handy? Enter `demo://breathing` to explore with a synthetic scene.
 3. **Breathing region** — press **Auto-detect breathing region**: the add-on watches ~30 seconds of video for periodic motion in the breathing band and suggests the region to measure. Keep the room still during the scan. You can always drag the box manually; keep it snug around the chest and tummy, away from crib rails and loose blankets.
 
+**Keep the box small.** The signal is the *median* motion of every pixel in the box, so a box dominated by static bedding averages the breathing away to nothing — a whole-bed box produces a Signal RMS an order of magnitude below the detection gate. Aim for the torso only (well under 25% of the image; the panel warns when you exceed that).
+
+**Co-sleeping warning.** Never include another person in the box. If an adult shares the bed, the detector can report reassuring "breathing" from *their* motion regardless of the baby's state — a false sense of safety that is worse than no reading. Draw the box around the baby's torso only, and double-check where the auto-detect suggestion lands before accepting it.
+
 Settings persist across restarts and updates. Use **Re-detect region** or **Camera…** on the dashboard to change them later.
 
 ## What the states mean
@@ -81,6 +85,7 @@ condition:
 | `minimum_confidence` | Quality score required before motion counts as breathing. |
 | `no_breath_timeout` | Seconds of missing signal (while calibrated and observable) before `NO_BREATHING_SIGNAL`. |
 | `presence_detection` | Pause monitoring when the crib is confirmed empty. Off = always treat the crib as occupied. |
+| `minimum_signal_rms` | Band-passed motion amplitude (px RMS) required before the signal counts as observable. Camera-distance dependent: lower it if the panel shows a rhythmic waveform with good SNR but says "too faint to trust". |
 | `mqtt_custom_broker` + `mqtt_*` | Only needed for a broker other than the one Home Assistant provides. |
 
 The camera URL and measurement region are set in the panel, not in the options, and are stored in the add-on's private data.

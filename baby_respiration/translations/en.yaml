@@ -20,6 +20,9 @@ configuration:
   presence_detection:
     name: Presence detection
     description: Pause monitoring when the crib is confirmed empty (pickup event followed by full-frame scans finding no breathing). Turn off to always treat the crib as occupied.
+  minimum_signal_rms:
+    name: Minimum signal amplitude
+    description: Band-passed motion amplitude (pixels RMS) required before the signal counts as observable. Camera-distance dependent - lower it if a genuine breathing waveform with good SNR is rejected as too faint.
   mqtt_custom_broker:
     name: Use a custom MQTT broker
     description: Turn on to use the broker settings below instead of the broker Home Assistant provides (e.g. the Mosquitto add-on).

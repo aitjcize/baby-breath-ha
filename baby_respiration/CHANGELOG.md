@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1
+
+Tuning from the first real-camera validation (wide-angle overhead cam, co-sleeping scene):
+
+- Lowered the default amplitude gate `minimum_signal_rms` from 0.003 to 0.001 px and exposed it as an add-on option. The old value rejected genuine breathing (strong SNR, rhythmic waveform) from cameras where the baby is small in frame; spectral gates (SNR, peak concentration, confidence) remain the primary noise discriminators.
+- Oversized-region warnings: the wizard and dashboard now warn when the box exceeds 25% of the image — the median-based signal gets drowned out by static pixels (a whole-bed box measured ~14× below the detection gate).
+- Co-sleeping warnings in the wizard, dashboard, and docs: never include a second person in the box; the monitor could measure *their* breathing instead of the baby's.
+
 ## 0.3.0
 
 - Crib presence detection (no ML): pickup-shaped disturbances followed by full-frame breathing scans decide `PRESENT`/`ABSENT`; sudden signal loss without a disturbance can never be classified as absence, so the no-breathing alert path stays armed.

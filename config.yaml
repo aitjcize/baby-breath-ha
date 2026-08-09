@@ -22,7 +22,7 @@ signal:
   no_breath_timeout: 12
   measurement_invalid_timeout: 8
   excessive_motion_threshold: 1.5
-  minimum_signal_rms: 0.003
+  minimum_signal_rms: 0.001
   minimum_snr_db: 3
   minimum_image_contrast: 3.0
   minimum_sharpness: 1.0
