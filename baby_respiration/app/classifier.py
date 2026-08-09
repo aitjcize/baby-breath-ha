@@ -32,6 +32,12 @@ class ConservativeClassifier:
         self._invalid_since: float | None = None
         self._calibrated = False
 
+    def reset(self) -> None:
+        self._breathing_since = None
+        self._no_signal_since = None
+        self._invalid_since = None
+        self._calibrated = False
+
     def update(self, estimate: RespirationEstimate, now: float) -> Classification:
         quality_valid = estimate.technical_valid and estimate.signal_observable
         if not quality_valid:

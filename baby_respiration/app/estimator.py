@@ -36,6 +36,9 @@ class RespirationEstimator:
         self.config = config
         self._history: deque[MotionObservation] = deque()
 
+    def clear(self) -> None:
+        self._history.clear()
+
     def add(self, observation: MotionObservation) -> None:
         self._history.append(observation)
         cutoff = observation.timestamp - max(60.0, self.config.analysis_window_duration * 1.5)

@@ -6,6 +6,7 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 
+from app import __version__
 from app.config import MQTTConfig
 
 LOGGER = logging.getLogger(__name__)
@@ -18,7 +19,7 @@ def _device() -> dict[str, Any]:
         "name": "Baby Respiration Detector",
         "manufacturer": "Local experimental monitor",
         "model": "Video optical-flow baseline",
-        "sw_version": "0.1.0",
+        "sw_version": __version__,
     }
 
 
@@ -39,7 +40,7 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
             "payload_available": "online",
             "payload_not_available": "offline",
             "device": _device(),
-            "origin": {"name": "baby-breath-ha", "sw_version": "0.1.0"},
+            "origin": {"name": "baby-breath-ha", "sw_version": __version__},
         }
 
     entities: list[tuple[str, str, dict[str, Any]]] = []

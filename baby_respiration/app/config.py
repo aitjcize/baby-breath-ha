@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import math
@@ -8,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+ADDON_OPTIONS_PATH = Path("/data/options.json")
 
 
 @dataclass(frozen=True)
@@ -114,6 +117,65 @@ def load_config(path: str | Path) -> AppConfig:
     return config
 
 
+def load_addon_config(options_path: str | Path = ADDON_OPTIONS_PATH) -> AppConfig:
+    """Build the configuration from Home Assistant add-on options.
+
+    Supervisor-provided MQTT service credentials arrive through the
+    ``BABY_MQTT_*`` environment variables exported by run.sh; explicit broker
+    options take precedence over them.
+    """
+    with Path(options_path).open("r", encoding="utf-8") as handle:
+        raw = json.load(handle)
+    if not isinstance(raw, dict):
+        raise ValueError("add-on options root must be a mapping")
+
+    camera = CameraConfig(
+        processing_fps=float(raw.get("processing_fps", 5)),
+        target_processing_width=int(raw.get("target_processing_width", 320)),
+    )
+    signal = SignalConfig(
+        min_bpm=float(raw.get("min_bpm", 15)),
+        max_bpm=float(raw.get("max_bpm", 90)),
+        minimum_confidence=float(raw.get("minimum_confidence", 55)),
+        no_breath_timeout=float(raw.get("no_breath_timeout", 12)),
+    )
+    config = AppConfig(
+        camera=camera,
+        signal=signal,
+        mqtt=_addon_mqtt(raw),
+        debug=DebugConfig(enabled=True, host="0.0.0.0", port=8080),
+        log_level=str(raw.get("log_level", "info")).upper(),
+    )
+    validate_config(config)
+    return config
+
+
+def _addon_mqtt(raw: dict[str, Any]) -> MQTTConfig:
+    base_topic = str(raw.get("mqtt_base_topic", "baby_respiration")).strip() or "baby_respiration"
+    discovery_prefix = str(raw.get("mqtt_discovery_prefix", "homeassistant")).strip() or "homeassistant"
+    if raw.get("mqtt_custom_broker"):
+        host = str(raw.get("mqtt_host", "")).strip()
+        return MQTTConfig(
+            enabled=bool(host),
+            host=host or "localhost",
+            port=int(raw.get("mqtt_port", 1883)),
+            username=str(raw.get("mqtt_username", "")),
+            password=str(raw.get("mqtt_password", "")),
+            base_topic=base_topic,
+            discovery_prefix=discovery_prefix,
+        )
+    env_host = os.environ.get("BABY_MQTT_HOST", "").strip()
+    return MQTTConfig(
+        enabled=bool(env_host),
+        host=env_host or "localhost",
+        port=int(os.environ.get("BABY_MQTT_PORT", "1883") or 1883),
+        username=os.environ.get("BABY_MQTT_USERNAME", ""),
+        password=os.environ.get("BABY_MQTT_PASSWORD", ""),
+        base_topic=base_topic,
+        discovery_prefix=discovery_prefix,
+    )
+
+
 def normalize_roi(values: Any) -> tuple[float, float, float, float]:
     if not isinstance(values, (list, tuple)) or len(values) != 4:
         raise ValueError("ROI must contain [x, y, width, height]")
@@ -129,54 +191,6 @@ def normalize_roi(values: Any) -> tuple[float, float, float, float]:
     if x + width > 1.000001 or y + height > 1.000001:
         raise ValueError("ROI must fit within normalized image coordinates")
     return tuple(round(value, 4) for value in roi)  # type: ignore[return-value]
-
-
-def save_roi(path: str | Path, values: Any) -> tuple[float, float, float, float]:
-    """Update only camera.roi, preserving the rest of the YAML and its comments."""
-    roi = normalize_roi(values)
-    config_path = Path(path)
-    text = config_path.read_text(encoding="utf-8")
-    lines = text.splitlines(keepends=True)
-    camera_index: int | None = None
-    camera_indent = 0
-    for index, line in enumerate(lines):
-        match = re.match(r"^(?P<indent>\s*)camera\s*:\s*(?:#.*)?(?:\r?\n)?$", line)
-        if match:
-            camera_index = index
-            camera_indent = len(match.group("indent"))
-            break
-    if camera_index is None:
-        raise ValueError("configuration has no camera section")
-
-    section_end = len(lines)
-    roi_index: int | None = None
-    roi_indent = " " * (camera_indent + 2)
-    for index in range(camera_index + 1, len(lines)):
-        line = lines[index]
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        indentation = len(line) - len(line.lstrip())
-        if indentation <= camera_indent:
-            section_end = index
-            break
-        match = re.match(r"^(?P<indent>\s*)roi\s*:.*?(?:\r?\n)?$", line)
-        if match:
-            roi_index = index
-            roi_indent = match.group("indent")
-            break
-
-    newline = "\r\n" if "\r\n" in text else "\n"
-    formatted = ", ".join(f"{value:.4f}" for value in roi)
-    replacement = f"{roi_indent}roi: [{formatted}]{newline}"
-    if roi_index is None:
-        lines.insert(section_end, replacement)
-    else:
-        if not lines[roi_index].endswith(("\n", "\r")):
-            replacement = replacement.rstrip("\r\n")
-        lines[roi_index] = replacement
-    config_path.write_text("".join(lines), encoding="utf-8")
-    return roi
 
 
 def validate_config(config: AppConfig) -> None:

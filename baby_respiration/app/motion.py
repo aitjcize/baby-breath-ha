@@ -31,10 +31,14 @@ class DenseOpticalFlowExtractor:
         self.signal = signal
         self._previous_gray: np.ndarray | None = None
         self._frozen_frames = 0
+        # Residual vertical flow of the latest frame pair (global motion already
+        # subtracted), for consumers such as the breathing-region scanner.
+        self.last_residual_dy: np.ndarray | None = None
 
     def reset(self) -> None:
         self._previous_gray = None
         self._frozen_frames = 0
+        self.last_residual_dy = None
 
     def _prepare(self, frame: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         height, width = frame.shape[:2]
@@ -101,6 +105,7 @@ class DenseOpticalFlowExtractor:
         global_dx = float(np.median(flow[..., 0]))
         global_dy = float(np.median(flow[..., 1]))
         global_motion = float(np.hypot(global_dx, global_dy))
+        self.last_residual_dy = flow[..., 1] - global_dy
 
         roi_flow = flow[y0:y1, x0:x1]
         residual_x = roi_flow[..., 0] - global_dx
