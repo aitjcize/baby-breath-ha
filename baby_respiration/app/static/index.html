@@ -125,7 +125,7 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
 .wavecard{margin-top:18px;padding:18px 18px 10px}
 .wavecard h2{font-size:15px;color:var(--ink-dim);font-weight:600}
 #wave{width:100%;height:150px;display:block}
-.camcard .actions{margin-top:14px}
+.camcard .actions{margin-top:14px;gap:8px}.camcard .actions button{padding:9px 13px;font-size:13px;white-space:nowrap}
 .diag{margin-top:18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px}
 .stat{background:var(--panel-deep);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px}
 .stat b{display:block;font:600 11px var(--font-body);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:4px}
@@ -260,7 +260,7 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
             <button class="btn-ghost" id="redetect">Edit region</button>
             <button class="btn-ghost" id="editCam">Camera</button>
             <button class="btn-ghost" id="editMqtt">MQTT</button>
-            <button class="btn-ghost" id="monitorBtn">Pause monitoring</button>
+            <button class="btn-ghost" id="monitorBtn" title="Turn breathing analysis on or off">Pause</button>
           </div>
           <p class="hint mono" id="roiLbl" style="margin:12px 2px 0"></p>
           <p class="msg" id="suggestHint" hidden style="margin:10px 0 0;font-size:13.5px"></p>
@@ -439,7 +439,7 @@ function renderDash(){
   else if(s.state==="MONITORING_OFF")why=prettyReason("monitoring_disabled");
   else if(s.scan&&s.scan.state==="running"&&s.scan.purpose==="presence")why="Checking whether the crib is occupied…";
   $("why").textContent=why;
-  $("monitorBtn").textContent=s.monitoring===false?"Resume monitoring":"Pause monitoring";
+  $("monitorBtn").textContent=s.monitoring===false?"Resume":"Pause";
   const conf=Math.round(s.confidence||0);$("confFill").style.width=conf+"%";$("confPct").textContent=conf;
   $("roiLbl").textContent="region "+ (s.roi||[]).map(v=>Number(v).toFixed(2)).join(", ");
   const hint=$("suggestHint");

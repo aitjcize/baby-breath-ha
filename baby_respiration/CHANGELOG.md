@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.9
+
+- Camera-card buttons (Edit region / Camera / MQTT / Pause) fit on a single row: compact styling and shorter Pause/Resume labels.
+
 ## 0.3.8
 
 - New `switch.baby_monitoring` (MQTT-controllable) plus a panel button: turn analysis on only while the baby is asleep. While off, optical flow is skipped entirely (near-zero CPU), no alerts can fire, measurement/presence entities go unavailable, the state shows `MONITORING_OFF`, and live video stays in the panel. Re-enabling starts a fresh calibration. The choice persists across restarts.
