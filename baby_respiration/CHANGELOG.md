@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.15
+
+- Faster detection of dead camera sessions: the frame read timeout drops from 8 s to 4 s. Combined with the 0.5 s reconnect and the 15 s hold, a routine CuboAi session drop (confirmed camera-side behavior) should now be fully invisible: ~4 s to notice + ~1 s to reconnect + ~5 s window refill fits inside the hold. The wizard's connection test keeps the longer 8 s budget for slow first handshakes.
+
 ## 0.3.14
 
 From gate-level logs of a full night (drops still surfacing as rhythm_not_stable at conf 50-55, plus 1 s aftershock blips while recalibrating):

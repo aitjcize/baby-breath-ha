@@ -21,7 +21,9 @@ class CameraConfig:
     processing_fps: float = 5.0
     roi: tuple[float, float, float, float] = (0.25, 0.35, 0.5, 0.35)
     open_timeout_ms: int = 8000
-    read_timeout_ms: int = 8000
+    # 4 s without a single frame means the session is dead for practical
+    # purposes; noticing fast is what keeps a reconnect inside the hold.
+    read_timeout_ms: int = 4000
 
 
 @dataclass(frozen=True)
