@@ -45,25 +45,38 @@ class RespirationEstimator:
         self._selected_block = None
 
     @staticmethod
-    def _block_matrix(valid: list[MotionObservation]) -> np.ndarray | None:
-        if not valid or any(item.block_values is None for item in valid):
+    def _block_matrix(valid: list[MotionObservation]) -> tuple[np.ndarray, tuple[int, int]] | None:
+        if not valid or any(item.block_values is None or item.block_grid is None for item in valid):
             return None
-        lengths = {len(item.block_values) for item in valid}  # type: ignore[arg-type]
-        if len(lengths) != 1 or lengths.pop() <= 1:
+        shapes = {(len(item.block_values), item.block_grid) for item in valid}  # type: ignore[arg-type]
+        if len(shapes) != 1:
             return None
-        return np.asarray([item.block_values for item in valid], dtype=np.float64)
+        count, grid_shape = shapes.pop()
+        if count <= 1:
+            return None
+        return np.asarray([item.block_values for item in valid], dtype=np.float64), grid_shape
+
+    # Real breathing concentrates its variance in the band (white noise puts
+    # only ~half there) and moves a chest-sized area coherently. A lone block
+    # of fluttering blanket or cherry-picked noise fails one of the two.
+    MINIMUM_BLOCK_PERIODICITY = 0.6
+    NEIGHBOR_CORRELATION = 0.5
+    NEIGHBOR_AMPLITUDE_FRACTION = 0.2
 
     def _select_block(
         self,
         matrix: np.ndarray,
+        grid_shape: tuple[int, int],
         valid_t: np.ndarray,
         grid: np.ndarray,
         sample_rate: float,
     ) -> int | None:
         """Pick the ROI block with the strongest breathing-band periodicity.
 
-        Prefers the previously selected block unless another clearly beats it,
-        so the measurement doesn't hop between neighbours every second.
+        Requires an adjacent block moving in phase (spatial coherence) so the
+        maximum-over-blocks search cannot fabricate breathing from noise or
+        single-block environmental flutter, and prefers the previously
+        selected block so the measurement doesn't hop between neighbours.
         """
         low_hz = self.config.min_bpm / 60.0
         high_hz = min(self.config.max_bpm / 60.0, 0.45 * sample_rate)
@@ -83,12 +96,48 @@ class RespirationEstimator:
         with np.errstate(divide="ignore", invalid="ignore"):
             periodicity = np.where(total_std > 1e-9, (band_std / np.maximum(total_std, 1e-12)) ** 2, 0.0)
         scores = periodicity * band_std
-        best = int(np.argmax(scores))
-        if scores[best] <= 0:
+
+        def supported(index: int) -> bool:
+            if periodicity[index] < self.MINIMUM_BLOCK_PERIODICITY:
+                return False
+            rows, cols = grid_shape
+            row, col = index // cols, index % cols
+            reference = filtered[:, index]
+            reference_std = band_std[index]
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    if dr == 0 and dc == 0:
+                        continue
+                    nr, nc = row + dr, col + dc
+                    if not (0 <= nr < rows and 0 <= nc < cols):
+                        continue
+                    neighbor = nr * cols + nc
+                    if band_std[neighbor] < self.NEIGHBOR_AMPLITUDE_FRACTION * reference_std:
+                        continue
+                    correlation = float(np.corrcoef(reference, filtered[:, neighbor])[0, 1])
+                    if correlation >= self.NEIGHBOR_CORRELATION:
+                        return True
+            return False
+
+        order = np.argsort(scores)[::-1]
+        best: int | None = None
+        for candidate in order[:5]:  # the strongest few; beyond them it is noise
+            if scores[candidate] <= 0:
+                break
+            if supported(int(candidate)):
+                best = int(candidate)
+                break
+        if best is None:
             self._selected_block = None
             return None
         previous = self._selected_block
-        if previous is not None and previous < scores.size and scores[previous] >= 0.75 * scores[best]:
+        if (
+            previous is not None
+            and previous < scores.size
+            and previous != best
+            and scores[previous] >= 0.75 * scores[best]
+            and supported(previous)
+        ):
             best = previous
         self._selected_block = best
         return best
@@ -187,13 +236,18 @@ class RespirationEstimator:
         # one that carries the rhythm — a large box drawn to allow the baby to
         # move no longer dilutes the signal with static bedding.
         selected_block: int | None = None
-        block_matrix = self._block_matrix(valid)
-        if block_matrix is not None:
-            selected_block = self._select_block(block_matrix, valid_t, grid, sample_rate)
-        if selected_block is not None and block_matrix is not None:
-            valid_y = block_matrix[:, selected_block].astype(np.float64)
+        blocks = self._block_matrix(valid)
+        if blocks is not None:
+            block_matrix, block_grid_shape = blocks
+            selected_block = self._select_block(block_matrix, block_grid_shape, valid_t, grid, sample_rate)
+        if selected_block is not None and blocks is not None:
+            valid_y = blocks[0][:, selected_block].astype(np.float64)
         else:
             valid_y = np.asarray([item.value for item in valid], dtype=np.float64)
+        # When per-block data exists but no block shows coherent breathing, the
+        # blocks have jointly ruled it out — a chance spectral fluke in their
+        # whole-box mixture must not be reported as breathing.
+        coherence_veto = blocks is not None and selected_block is None
 
         # Transient rejection: twitches and brushed limbs are far larger than
         # breathing but below the excessive-motion gate, and one spike poisons
@@ -296,10 +350,15 @@ class RespirationEstimator:
             + 0.05 * stability
         )
         confidence = float(np.clip(confidence, 0.0, 100.0))
-        signal_observable, breathing_signal = self._apply_gates(rms, snr_db, confidence, concentration, was_breathing)
-        reason = "breathing_signal" if breathing_signal else (
-            "signal_snr_too_low" if not signal_observable else "periodicity_confidence_low"
-        )
+        if coherence_veto:
+            signal_observable = breathing_signal = False
+            self._was_breathing = False
+            reason = "no_coherent_breathing_region"
+        else:
+            signal_observable, breathing_signal = self._apply_gates(rms, snr_db, confidence, concentration, was_breathing)
+            reason = "breathing_signal" if breathing_signal else (
+                "signal_snr_too_low" if not signal_observable else "periodicity_confidence_low"
+            )
 
         waveform_stride = max(1, len(filtered) // 300)
         waveform_t = (grid[::waveform_stride] - grid[-1]).round(3).tolist()

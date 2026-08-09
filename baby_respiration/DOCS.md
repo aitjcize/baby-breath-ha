@@ -41,7 +41,7 @@ Low signal-to-noise, a frozen stream, excess movement, and startup without calib
 
 The camera is always on, but the baby is not always in the crib. Rather than an ML person detector (unreliable on IR night vision and swaddled infants — and a missed detection would silently suppress alerts), presence uses a physical invariant: **a baby cannot enter or leave the crib without a caregiver**, i.e. without a large sustained motion event.
 
-- A confirmed breathing signal marks the baby **present** at any time.
+- A **sustained** breathing signal (several consecutive seconds, not a momentary blip) marks the baby **present** at any time.
 - A sudden loss of breathing **without** a preceding pickup-shaped disturbance keeps presence at *present* — apnea does not look like a pickup, so it can never be mistaken for absence, and the no-breathing alert path stays fully armed.
 - After a pickup-shaped disturbance with no signal, the add-on runs full-frame breathing scans: breathing anywhere → *present* (if it is outside your configured region, the panel suggests enlarging or moving your box); two clean empty scans → *absent*, monitoring pauses.
 - Another disturbance (baby returned) triggers re-verification, and monitoring resumes on its own.

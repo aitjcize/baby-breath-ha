@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.6
+
+Empty-crib false positives fixed (observed: "in crib" and a 44 BPM "detection" on an empty bed from airflow rippling the blankets):
+
+- Presence now requires **sustained** breathing (~8 s continuous) before marking the crib occupied. A momentary false blip used to stick forever, because an empty bed never produces the pickup disturbance that triggers re-verification.
+- Block selection requires **spatial coherence**: the chosen block must have an adjacent block moving in phase (correlation ≥ 0.5 with meaningful amplitude) plus a periodicity floor. A chest moves a multi-block area together; a fluttering blanket corner or cherry-picked noise does not.
+- When per-block data exists and no block shows coherent breathing, detection is vetoed outright (`no_coherent_breathing_region`) instead of falling back to the whole-box median — a chance spectral fluke in a 24 s noise window can no longer register as breathing.
+
 ## 0.3.5
 
 - Removed the user-facing auto-detect region feature: with block-adaptive measurement, drawing a generous box by hand is simpler and more predictable than the scan's suggestions. The wizard step is now draw-only, and the dashboard button is renamed **Edit region**. (Full-frame scans remain internal to presence verification, which they were designed for.)

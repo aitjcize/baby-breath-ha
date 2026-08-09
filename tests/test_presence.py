@@ -12,6 +12,14 @@ def make_tracker(**kwargs) -> PresenceTracker:
     return PresenceTracker(**defaults)
 
 
+def confirm_breathing(tracker: PresenceTracker, start: float, seconds: float = 10.0) -> float:
+    t = start
+    while t <= start + seconds:
+        tracker.update(t, breathing=True)
+        t += 1.0
+    return t
+
+
 def pickup(tracker: PresenceTracker, start: float, duration: float = 5.0) -> float:
     """Simulate a caregiver disturbance; returns the time after quiet settles."""
     t = start
@@ -27,25 +35,33 @@ def estimate(*, breathing: bool, observable: bool = True) -> RespirationEstimate
     return RespirationEstimate(technical_valid=True, signal_observable=observable, breathing_signal=breathing, reason="test")
 
 
-def test_breathing_confirms_present() -> None:
+def test_only_sustained_breathing_confirms_present() -> None:
     tracker = make_tracker()
     assert tracker.state == PresenceState.UNKNOWN
-    assert tracker.update(1.0, breathing=True) == PresenceState.PRESENT
+    # A blip must not mark the crib occupied (empty-bed false positives stick
+    # forever, since an empty bed never produces a pickup disturbance).
+    tracker.update(1.0, breathing=True)
+    assert tracker.state == PresenceState.UNKNOWN
+    tracker.update(2.0, breathing=False)
+    tracker.update(3.0, breathing=True)
+    assert tracker.state == PresenceState.UNKNOWN
+    confirm_breathing(tracker, 4.0)
+    assert tracker.state == PresenceState.PRESENT
 
 
 def test_signal_loss_without_disturbance_stays_present() -> None:
     """Apnea does not look like a pickup: no disturbance means no absence."""
     tracker = make_tracker()
-    tracker.update(1.0, breathing=True)
-    for t in range(2, 120):
+    confirm_breathing(tracker, 1.0)
+    for t in range(20, 140):
         assert tracker.update(float(t), breathing=False) == PresenceState.PRESENT
-    assert not tracker.wants_scan(120.0)
+    assert not tracker.wants_scan(140.0)
 
 
 def test_pickup_then_failed_scans_confirms_absent_and_return_recovers() -> None:
     tracker = make_tracker()
-    tracker.update(1.0, breathing=True)
-    settle = pickup(tracker, 10.0)
+    confirm_breathing(tracker, 1.0)
+    settle = pickup(tracker, 20.0)
     assert tracker.update(settle, breathing=False) == PresenceState.CHECKING
 
     assert tracker.wants_scan(settle)
@@ -67,8 +83,8 @@ def test_pickup_then_failed_scans_confirms_absent_and_return_recovers() -> None:
 
 def test_inconclusive_scan_does_not_count_toward_absence() -> None:
     tracker = make_tracker()
-    tracker.update(1.0, breathing=True)
-    settle = pickup(tracker, 10.0)
+    confirm_breathing(tracker, 1.0)
+    settle = pickup(tracker, 20.0)
     tracker.update(settle, breathing=False)
     tracker.on_scan_started()
     tracker.on_scan_completed(None, settle + 30)  # motion during scan
@@ -78,11 +94,11 @@ def test_inconclusive_scan_does_not_count_toward_absence() -> None:
 
 def test_short_twitch_is_not_a_disturbance() -> None:
     tracker = make_tracker()
-    tracker.update(1.0, breathing=True)
-    tracker.observe(2.0, excessive=True)  # single excessive frame
-    tracker.observe(2.2, excessive=True)
-    tracker.observe(5.0, excessive=False)
-    assert tracker.update(5.0, breathing=False) == PresenceState.PRESENT
+    confirm_breathing(tracker, 1.0)
+    tracker.observe(20.0, excessive=True)  # single excessive frame
+    tracker.observe(20.2, excessive=True)
+    tracker.observe(23.0, excessive=False)
+    assert tracker.update(23.0, breathing=False) == PresenceState.PRESENT
 
 
 def test_disabled_tracker_always_present() -> None:

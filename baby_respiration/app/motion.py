@@ -28,6 +28,7 @@ class MotionObservation:
     # estimator can measure from the block that currently carries breathing
     # instead of a whole-box median that static bedding dilutes.
     block_values: tuple[float, ...] | None = None
+    block_grid: tuple[int, int] | None = None  # (rows, cols) of block_values
 
 
 class DenseOpticalFlowExtractor:
@@ -69,7 +70,7 @@ class DenseOpticalFlowExtractor:
         x0: int,
         y0: int,
         frame_shape: tuple[int, ...],
-    ) -> tuple[float, ...] | None:
+    ) -> tuple[tuple[float, ...], tuple[int, int]] | None:
         rows = residual_y.shape[0] // BLOCK_SIZE
         cols = residual_y.shape[1] // BLOCK_SIZE
         if rows * cols <= 1:
@@ -88,7 +89,7 @@ class DenseOpticalFlowExtractor:
                 for row in range(rows)
                 for col in range(cols)
             ]
-        return tuple(float(value) for value in medians.ravel())
+        return tuple(float(value) for value in medians.ravel()), (rows, cols)
 
     def roi_pixels(self, shape: tuple[int, ...]) -> tuple[int, int, int, int]:
         height, width = shape[:2]
@@ -149,7 +150,8 @@ class DenseOpticalFlowExtractor:
         residual_x = roi_flow[..., 0] - global_dx
         residual_y = roi_flow[..., 1] - global_dy
         vertical_motion = float(np.median(residual_y))
-        block_values = self._block_medians(residual_y, x0, y0, gray.shape)
+        blocks = self._block_medians(residual_y, x0, y0, gray.shape)
+        block_values, block_grid = blocks if blocks is not None else (None, None)
         residual_magnitude = np.hypot(residual_x, residual_y)
         local_motion = float(np.percentile(residual_magnitude, 75))
         motion_metric = max(global_motion, local_motion)
@@ -182,6 +184,7 @@ class DenseOpticalFlowExtractor:
                 frame_change=frame_change,
                 reason="ok" if valid else ",".join(reasons),
                 block_values=block_values,
+                block_grid=block_grid,
             ),
             overlay,
         )

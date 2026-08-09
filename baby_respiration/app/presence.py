@@ -43,6 +43,7 @@ class PresenceTracker:
         required_failed_scans: int = 2,
         scan_cooldown: float = 45.0,
         checking_timeout: float = 600.0,
+        breathing_confirm_duration: float = 8.0,
     ) -> None:
         self.enabled = enabled
         self.minimum_disturbance = minimum_disturbance
@@ -50,6 +51,7 @@ class PresenceTracker:
         self.required_failed_scans = required_failed_scans
         self.scan_cooldown = scan_cooldown
         self.checking_timeout = checking_timeout
+        self.breathing_confirm_duration = breathing_confirm_duration
         self._state = PresenceState.UNKNOWN
         self._reason = "startup"
         self._disturbance_start: float | None = None
@@ -58,6 +60,7 @@ class PresenceTracker:
         self._scan_wanted = False
         self._last_scan_finished: float | None = None
         self._checking_since: float | None = None
+        self._breathing_since: float | None = None
 
     # ------------------------------------------------------------------ input
 
@@ -91,20 +94,33 @@ class PresenceTracker:
         self._scan_wanted = True
 
     def update(self, now: float, breathing: bool) -> PresenceState:
-        """Advance with the once-per-second estimate result."""
+        """Advance with the once-per-second estimate result.
+
+        A single breathing blip must not mark the crib occupied: on an empty
+        bed there is no pickup disturbance to ever trigger re-verification, so
+        a false PRESENT would stick forever. Only sustained breathing counts.
+        """
         if not self.enabled:
             return PresenceState.PRESENT
         if breathing:
-            if self._state != PresenceState.PRESENT:
-                self._set(PresenceState.PRESENT, "breathing_signal_confirmed")
-            self._scan_wanted = False
-            self._checking_since = None
-            self._failed_scans = 0
-        elif self._state == PresenceState.CHECKING:
-            if self._checking_since is not None and now - self._checking_since > self.checking_timeout:
-                self._set(PresenceState.UNKNOWN, "verification_timed_out")
+            if self._breathing_since is None:
+                self._breathing_since = now
+            if now - self._breathing_since >= self.breathing_confirm_duration:
+                if self._state != PresenceState.PRESENT:
+                    self._set(PresenceState.PRESENT, "sustained_breathing_confirmed")
                 self._scan_wanted = False
                 self._checking_since = None
+                self._failed_scans = 0
+        else:
+            self._breathing_since = None
+        if (
+            self._state == PresenceState.CHECKING
+            and self._checking_since is not None
+            and now - self._checking_since > self.checking_timeout
+        ):
+            self._set(PresenceState.UNKNOWN, "verification_timed_out")
+            self._scan_wanted = False
+            self._checking_since = None
         return self._state
 
     # ------------------------------------------------------------- scan hooks
