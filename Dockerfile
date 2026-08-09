@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && groupadd --system detector \
     && useradd --system --gid detector --home-dir /app detector
 
-COPY app ./app
+COPY baby_respiration/app ./app
 COPY config.example.yaml ./config.yaml
 RUN chown -R detector:detector /app
 

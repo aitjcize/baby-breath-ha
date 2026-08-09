@@ -1,16 +1,26 @@
 [project]
 name = "baby-breath-ha"
-version = "0.1.0"
+version = "0.2.0"
 description = "Experimental local video respiration signal detector with Home Assistant MQTT discovery"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "numpy>=2.0,<3",
-    "opencv-python-headless>=4.10,<5",
+    "numpy>=1.24,<3",
+    "opencv-python-headless>=4.6,<5",
     "paho-mqtt>=2.1,<3",
     "pyyaml>=6.0,<7",
-    "scipy>=1.14,<2",
+    "scipy>=1.10,<2",
 ]
+
+[project.scripts]
+baby-respiration = "app.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["baby_respiration/app"]
 
 [dependency-groups]
 dev = [
@@ -20,7 +30,4 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
-pythonpath = ["."]
-
-[tool.uv]
-package = false
+pythonpath = ["baby_respiration"]
