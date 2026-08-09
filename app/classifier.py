@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+
+from app.config import SignalConfig
+from app.estimator import RespirationEstimate
+
+
+class DetectorState(str, Enum):
+    BREATHING = "BREATHING"
+    NO_BREATHING_SIGNAL = "NO_BREATHING_SIGNAL"
+    MEASUREMENT_INVALID = "MEASUREMENT_INVALID"
+
+
+@dataclass(frozen=True)
+class Classification:
+    state: DetectorState
+    measurement_valid: bool
+    breathing_detected: bool | None
+    reason: str
+    calibrated: bool
+
+
+class ConservativeClassifier:
+    """State machine that never interprets unobservable video as absent breathing."""
+
+    def __init__(self, config: SignalConfig) -> None:
+        self.config = config
+        self._breathing_since: float | None = None
+        self._no_signal_since: float | None = None
+        self._invalid_since: float | None = None
+        self._calibrated = False
+
+    def update(self, estimate: RespirationEstimate, now: float) -> Classification:
+        quality_valid = estimate.technical_valid and estimate.signal_observable
+        if not quality_valid:
+            self._breathing_since = None
+            self._no_signal_since = None
+            if self._invalid_since is None:
+                self._invalid_since = now
+            if now - self._invalid_since >= self.config.measurement_invalid_timeout:
+                self._calibrated = False
+            return Classification(
+                DetectorState.MEASUREMENT_INVALID,
+                False,
+                None,
+                estimate.reason,
+                self._calibrated,
+            )
+
+        self._invalid_since = None
+        if estimate.breathing_signal:
+            self._no_signal_since = None
+            if self._breathing_since is None:
+                self._breathing_since = now
+            if now - self._breathing_since >= self.config.baseline_required_duration:
+                self._calibrated = True
+            return Classification(
+                DetectorState.BREATHING,
+                True,
+                True,
+                "periodic_respiration_signal_present",
+                self._calibrated,
+            )
+
+        self._breathing_since = None
+        if not self._calibrated:
+            return Classification(
+                DetectorState.MEASUREMENT_INVALID,
+                False,
+                None,
+                "low_confidence_without_prior_calibration",
+                False,
+            )
+        if self._no_signal_since is None:
+            self._no_signal_since = now
+        elapsed = now - self._no_signal_since
+        if elapsed < self.config.no_breath_timeout:
+            return Classification(
+                DetectorState.MEASUREMENT_INVALID,
+                False,
+                None,
+                f"respiration_signal_missing_pending_timeout:{elapsed:.1f}s",
+                True,
+            )
+        return Classification(
+            DetectorState.NO_BREATHING_SIGNAL,
+            True,
+            False,
+            "observable_periodic_respiration_signal_absent_after_timeout",
+            True,
+        )

@@ -1,0 +1,9 @@
+.DS_Store
+.git
+.gitignore
+.pytest_cache
+.venv
+__pycache__
+tests
+*.log
+

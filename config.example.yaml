@@ -1,0 +1,47 @@
+log_level: INFO
+
+camera:
+  # Prefer an environment variable so credentials are not stored in this file.
+  rtsp_url: "${BABY_CAMERA_RTSP_URL}"
+  reconnect_interval: 5
+  target_processing_width: 320
+  processing_fps: 5
+  # Normalized [x, y, width, height], measured from the top-left.
+  roi: [0.25, 0.35, 0.50, 0.35]
+  open_timeout_ms: 8000
+  read_timeout_ms: 8000
+
+signal:
+  min_bpm: 15
+  max_bpm: 90
+  analysis_window_duration: 24
+  minimum_valid_window_duration: 15
+  minimum_confidence: 55
+  no_breath_timeout: 12
+  # Seconds before a learned good-signal baseline is discarded after invalid video.
+  measurement_invalid_timeout: 8
+  # Median global optical-flow pixels per processed frame.
+  excessive_motion_threshold: 1.5
+  minimum_signal_rms: 0.003
+  minimum_snr_db: 3
+  minimum_image_contrast: 3.0
+  minimum_sharpness: 1.0
+  maximum_interpolation_gap: 1.0
+  baseline_required_duration: 10
+
+mqtt:
+  enabled: false
+  host: "localhost"
+  port: 1883
+  username: "${BABY_MQTT_USERNAME}"
+  password: "${BABY_MQTT_PASSWORD}"
+  base_topic: "baby_respiration"
+  discovery_prefix: "homeassistant"
+  client_id: "baby-respiration-detector"
+  tls: false
+
+debug:
+  enabled: true
+  # Loopback-only by default because this page contains camera frames.
+  host: "127.0.0.1"
+  port: 8080

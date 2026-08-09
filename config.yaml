@@ -1,0 +1,44 @@
+# Local safe-start configuration. Fill BABY_CAMERA_RTSP_URL and enable MQTT
+# after setting the broker details below (or copy/edit config.example.yaml).
+log_level: INFO
+
+camera:
+  rtsp_url: "${BABY_CAMERA_RTSP_URL}"
+  reconnect_interval: 5
+  target_processing_width: 320
+  processing_fps: 5
+  roi: [0.25, 0.35, 0.50, 0.35]
+  open_timeout_ms: 8000
+  read_timeout_ms: 8000
+
+signal:
+  min_bpm: 15
+  max_bpm: 90
+  analysis_window_duration: 24
+  minimum_valid_window_duration: 15
+  minimum_confidence: 55
+  no_breath_timeout: 12
+  measurement_invalid_timeout: 8
+  excessive_motion_threshold: 1.5
+  minimum_signal_rms: 0.003
+  minimum_snr_db: 3
+  minimum_image_contrast: 3.0
+  minimum_sharpness: 1.0
+  maximum_interpolation_gap: 1.0
+  baseline_required_duration: 10
+
+mqtt:
+  enabled: false
+  host: "localhost"
+  port: 1883
+  username: "${BABY_MQTT_USERNAME}"
+  password: "${BABY_MQTT_PASSWORD}"
+  base_topic: "baby_respiration"
+  discovery_prefix: "homeassistant"
+  client_id: "baby-respiration-detector"
+  tls: false
+
+debug:
+  enabled: true
+  host: "127.0.0.1"
+  port: 8080

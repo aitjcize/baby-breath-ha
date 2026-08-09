@@ -1,0 +1,25 @@
+services:
+  baby-respiration:
+    image: baby-breath-ha:local
+    build: .
+    init: true
+    restart: unless-stopped
+    environment:
+      # The app listens on the container interface, but the published port below
+      # remains loopback-only on the Mac to protect camera frames.
+      BABY_DEBUG_HOST: "0.0.0.0"
+      BABY_CAMERA_RTSP_URL: "${BABY_CAMERA_RTSP_URL:-}"
+      BABY_MQTT_USERNAME: "${BABY_MQTT_USERNAME:-}"
+      BABY_MQTT_PASSWORD: "${BABY_MQTT_PASSWORD:-}"
+      OPENCV_FFMPEG_CAPTURE_OPTIONS: "rtsp_transport;tcp"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
