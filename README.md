@@ -53,6 +53,8 @@ docker compose logs -f baby-respiration
 
 Compose publishes the web UI only on `127.0.0.1`. In standalone mode, configure MQTT in [`config.yaml`](config.yaml) (`${BABY_MQTT_USERNAME}` / `${BABY_MQTT_PASSWORD}` env expansion supported).
 
+To test on a real Home Assistant box, `./deploy-dev.sh [root@homeassistant.local]` installs a parallel **Baby Respiration Monitor (Dev)** add-on (slug `local_baby_respiration_dev`): it rsyncs the add-on over the SSH add-on, and after the one-time on-device install it builds the image locally and loads it into the HAOS Docker via debug SSH on port 22222 — no slow on-device rebuilds.
+
 Repository layout:
 
 - `baby_respiration/` — the Home Assistant add-on (manifest, Dockerfile, `run.sh`, and the `app/` Python package with the web UI in `app/static/`)
