@@ -297,6 +297,8 @@ const prettyReason=r=>{if(!r)return"";if(r.startsWith("respiration_signal_missin
 /* ---------- view state ---------- */
 let status=null,view=null,wstep=0,forced=null; // forced: "camera"|"region"|null
 let pendingRoi=null,roiDirty=false,scanWasRunning=false,lastFrameOk=false;
+let engaged=false; // any wizard interaction pins the wizard view
+["pointerdown","keydown"].forEach(ev=>document.addEventListener(ev,e=>{if(!$("wizard").hidden)engaged=true}));
 
 function setView(v,step){
   view=v;$("wizard").hidden=v!=="wizard";$("dashboard").hidden=v!=="dashboard";$("statePill").hidden=v!=="dashboard";
@@ -373,6 +375,7 @@ $("editCam").addEventListener("click",()=>{forced="camera";setView("wizard",2)})
 /* ---------- scan progress ---------- */
 function renderScan(){
   const scan=status.scan||{state:"idle"};
+  $("saveRegion").disabled=!(pendingRoi||(scan.state==="done"&&scan.result));
   if(scan.state==="running"){
     $("scanVeil").hidden=false;scanWasRunning=true;
     const p=Math.round((scan.progress||0)*100);
@@ -429,7 +432,7 @@ function pollFrame(){
   const img=view==="dashboard"?$("dashImg"):(view==="wizard"&&wstep===3?$("regionImg"):null);
   if(!img)return;
   const probe=new Image();
-  probe.onload=()=>{lastFrameOk=true;img.src=probe.src;$("regionVeil").hidden=view!=="wizard"||wstep!==3?true:false;$("dashVeil").hidden=true;requestAnimationFrame(view==="dashboard"?renderDashCanvas:renderRegionCanvas)};
+  probe.onload=()=>{lastFrameOk=true;img.src=probe.src;$("regionVeil").hidden=true;$("dashVeil").hidden=true;requestAnimationFrame(view==="dashboard"?renderDashCanvas:renderRegionCanvas)};
   probe.onerror=()=>{lastFrameOk=false;if(view==="wizard"&&wstep===3)$("regionVeil").hidden=false;if(view==="dashboard")$("dashVeil").hidden=false};
   probe.src="frame.jpg?t="+Date.now();
 }
@@ -441,6 +444,8 @@ async function tick(){
     if(view===null){ // first load
       if(status.camera_configured)setView("dashboard");
       else setView("wizard",localStorage.getItem("bb-ack")?2:1);
+    }else if(view==="wizard"&&!forced&&!engaged&&status.camera_configured){
+      setView("dashboard"); // first status raced a just-applied camera setting
     }
     if($("ack").checked)localStorage.setItem("bb-ack","1");
     $("cfgNote").hidden=!status.camera_configured;

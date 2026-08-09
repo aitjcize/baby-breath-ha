@@ -69,8 +69,8 @@ class DenseOpticalFlowExtractor:
         sharpness = float(cv2.Laplacian(roi_gray, cv2.CV_32F).var())
         brightness = float(np.mean(roi_gray))
 
-        overlay = display.copy()
-        cv2.rectangle(overlay, (x0, y0), (x1 - 1, y1 - 1), (0, 255, 255), 2)
+        # The web client draws the ROI and status itself; serve a clean frame.
+        overlay = display
 
         if self._previous_gray is None or self._previous_gray.shape != gray.shape:
             self._previous_gray = gray
@@ -129,18 +129,6 @@ class DenseOpticalFlowExtractor:
             reasons.append("frozen_video")
 
         valid = not reasons
-        color = (0, 200, 0) if valid else (0, 0, 255)
-        cv2.rectangle(overlay, (x0, y0), (x1 - 1, y1 - 1), color, 2)
-        cv2.putText(
-            overlay,
-            "ROI " + ("valid" if valid else ", ".join(reasons)),
-            (x0, max(18, y0 - 7)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.45,
-            color,
-            1,
-            cv2.LINE_AA,
-        )
         return (
             MotionObservation(
                 timestamp=timestamp,

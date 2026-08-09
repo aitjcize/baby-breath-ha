@@ -316,14 +316,8 @@ class BabyRespirationService:
 
     @staticmethod
     def _encode_overlay(frame: Any, status: dict[str, Any]) -> bytes | None:
+        del status  # the web client renders state; the frame stays clean
         if frame is None:
             return None
-        annotated = frame.copy()
-        lines = [
-            f"{status['state']}  valid={status['measurement_valid']}",
-            f"BPM={status['bpm']}  confidence={status['confidence']:.1f}%  SNR={status['snr_db']}",
-        ]
-        for index, line in enumerate(lines):
-            cv2.putText(annotated, line, (8, 20 + index * 20), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (255, 255, 255), 1, cv2.LINE_AA)
-        ok, encoded = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 82])
+        ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
         return encoded.tobytes() if ok else None

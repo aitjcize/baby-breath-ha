@@ -1,5 +1,7 @@
-# Local safe-start configuration. Fill BABY_CAMERA_RTSP_URL and enable MQTT
-# after setting the broker details below (or copy/edit config.example.yaml).
+# Standalone-mode configuration (the Home Assistant add-on uses its own
+# options instead). The camera URL and region set through the web onboarding
+# wizard are stored in ./data/settings.json and take precedence over camera
+# values here.
 log_level: INFO
 
 camera:

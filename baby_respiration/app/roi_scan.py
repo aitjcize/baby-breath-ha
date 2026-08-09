@@ -27,6 +27,9 @@ MAXIMUM_EXCESSIVE_FRACTION = 0.3
 # non-breathing movement (caregiver, pets, fans) and are excluded.
 MAXIMUM_BLOCK_MOTION_STD = 0.6
 CLUSTER_SCORE_FRACTION = 0.35
+# White noise puts roughly the band's share of the spectrum (~0.5 here) into
+# the breathing band; genuine breathing concentrates well above that.
+MINIMUM_PERIODICITY = 0.6
 
 
 @dataclass(frozen=True)
@@ -204,7 +207,7 @@ class BreathingRegionScanner:
         peak_freqs = frequencies[band_indices[np.argmax(spectrum[band], axis=0)]]
 
         best = int(np.argmax(scores))
-        if scores[best] <= 0:
+        if scores[best] <= 0 or periodicity[best] < MINIMUM_PERIODICITY:
             return None
         best_freq = float(peak_freqs[best])
         scores_grid = scores.reshape(blocks_y, blocks_x)

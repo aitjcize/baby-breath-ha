@@ -11,11 +11,14 @@ services:
       BABY_CAMERA_RTSP_URL: "${BABY_CAMERA_RTSP_URL:-}"
       BABY_MQTT_USERNAME: "${BABY_MQTT_USERNAME:-}"
       BABY_MQTT_PASSWORD: "${BABY_MQTT_PASSWORD:-}"
+      BABY_DATA_DIR: /app/data
       OPENCV_FFMPEG_CAPTURE_OPTIONS: "rtsp_transport;tcp"
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
       - ./config.yaml:/app/config.yaml:ro
+      # Writable home for wizard-entered settings (camera URL, region).
+      - ./data:/app/data
     read_only: true
     tmpfs:
       - /tmp:size=128m

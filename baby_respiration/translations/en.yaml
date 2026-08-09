@@ -1,0 +1,40 @@
+configuration:
+  log_level:
+    name: Log level
+    description: Verbosity of the add-on log.
+  processing_fps:
+    name: Processing frame rate
+    description: Frames per second analyzed for motion. 5 is enough for breathing rates up to 120 BPM; higher values cost CPU.
+  min_bpm:
+    name: Minimum breathing rate
+    description: Lower bound of the breathing band in breaths per minute.
+  max_bpm:
+    name: Maximum breathing rate
+    description: Upper bound of the breathing band in breaths per minute.
+  minimum_confidence:
+    name: Minimum confidence
+    description: Signal-quality score (0-100) required before motion counts as a breathing signal.
+  no_breath_timeout:
+    name: No-breathing timeout
+    description: Seconds a calibrated, observable region must show no periodic motion before the state becomes NO_BREATHING_SIGNAL.
+  mqtt_custom_broker:
+    name: Use a custom MQTT broker
+    description: Turn on to use the broker settings below instead of the broker Home Assistant provides (e.g. the Mosquitto add-on).
+  mqtt_host:
+    name: MQTT host
+    description: Custom broker hostname or IP. Only used when the custom broker switch is on.
+  mqtt_port:
+    name: MQTT port
+    description: Custom broker port. Only used when the custom broker switch is on.
+  mqtt_username:
+    name: MQTT username
+    description: Custom broker username. Leave empty for anonymous brokers.
+  mqtt_password:
+    name: MQTT password
+    description: Custom broker password.
+  mqtt_base_topic:
+    name: MQTT base topic
+    description: Topic prefix for state and availability messages.
+  mqtt_discovery_prefix:
+    name: MQTT discovery prefix
+    description: Home Assistant MQTT discovery prefix. Leave at homeassistant unless you changed it in Home Assistant.
