@@ -83,6 +83,3 @@ def test_probe_demo_and_unconfigured(tmp_path: Path) -> None:
         settings_store=SettingsStore(tmp_path / "fresh"),
     )
     assert empty.camera_configured is False
-    ok, message = empty.start_scan()
-    assert ok is False
-    assert "not connected" in message

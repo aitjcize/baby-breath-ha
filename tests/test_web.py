@@ -13,7 +13,6 @@ from app.web import WebServer, WebState
 class FakeController:
     def __init__(self) -> None:
         self.applied: list[dict[str, Any]] = []
-        self.scan_started = 0
 
     def probe(self, url: str) -> dict[str, Any]:
         return {"ok": url.startswith("rtsp://good"), "message": "test"}
@@ -24,13 +23,6 @@ class FakeController:
     def apply_settings(self, rtsp_url: str | None = None, roi: Any = None, mqtt: Any = None) -> dict[str, Any]:
         self.applied.append({"rtsp_url": rtsp_url, "roi": roi, "mqtt": mqtt})
         return {"applied": True}
-
-    def start_scan(self) -> tuple[bool, str]:
-        self.scan_started += 1
-        return True, "started"
-
-    def cancel_scan(self) -> None:
-        pass
 
 
 @pytest.fixture()
@@ -82,10 +74,6 @@ def test_probe_settings_and_scan(server) -> None:
     _, payload = request(base + "/api/settings", "POST", {"rtsp_url": "rtsp://good/stream", "roi": [0.1, 0.2, 0.3, 0.4]})
     assert payload["applied"] is True
     assert controller.applied == [{"rtsp_url": "rtsp://good/stream", "roi": [0.1, 0.2, 0.3, 0.4], "mqtt": None}]
-
-    _, payload = request(base + "/api/scan/start", "POST")
-    assert payload["ok"] is True
-    assert controller.scan_started == 1
 
     with urllib.request.urlopen(base + "/probe-preview.jpg", timeout=5) as response:
         assert response.read().startswith(b"\xff\xd8")

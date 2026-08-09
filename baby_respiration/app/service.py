@@ -196,15 +196,6 @@ class BabyRespirationService:
             "roi": list(update.get("roi", self._camera.roi)),
         }
 
-    def start_scan(self) -> tuple[bool, str]:
-        snapshot = self.source.snapshot()
-        if snapshot.status != "connected":
-            return False, "Camera stream is not connected yet."
-        return self.scanner.start()
-
-    def cancel_scan(self) -> None:
-        self.scanner.cancel()
-
     def stop(self) -> None:
         self._stop_event.set()
 

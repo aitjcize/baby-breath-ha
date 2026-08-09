@@ -101,11 +101,6 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
 .viewer canvas.draw{cursor:crosshair}
 .viewer .veil{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--ink-dim);font-size:14px;background:linear-gradient(110deg,#060a14 40%,#0b1322 50%,#060a14 60%);background-size:220% 100%;animation:shimmer 1.6s linear infinite;padding:16px}
 @keyframes shimmer{to{background-position:-120% 0}}
-.scanveil{position:absolute;inset:0;display:grid;place-items:center;background:rgba(6,10,20,.72);backdrop-filter:blur(2px)}
-.ring{position:relative;width:120px;height:120px}
-.ring svg{transform:rotate(-90deg)}
-.ring .pct{position:absolute;inset:0;display:grid;place-items:center;font:700 22px var(--font-round);color:var(--amber)}
-.scanveil .lbl{position:absolute;bottom:18px;left:0;right:0;text-align:center;color:var(--ink-dim);font-size:13.5px;padding:0 20px}
 
 /* ---------- dashboard ---------- */
 .dash{display:grid;grid-template-columns:5fr 6fr;gap:18px;align-items:start}
@@ -195,29 +190,22 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
     </div>
 
     <div class="step wide card reveal" id="step3" hidden>
-      <h1>Find the breathing region</h1>
-      <p class="sub">Auto-detect watches ~30 seconds of video for periodic breathing-band motion and suggests where to measure — it works in night vision too. You can always drag the box yourself.</p>
-      <p class="sub" style="color:var(--coral)"><strong>The box may be generous — the monitor finds and follows breathing within it — but it must contain your baby only.</strong> If it can include a co-sleeping adult, the monitor may measure <em>their</em> breathing instead of your baby's.</p>
+      <h1>Draw the breathing region</h1>
+      <p class="sub">Drag a box over where your baby sleeps. Draw it generously — the monitor finds and follows the breathing rhythm <em>within</em> the box, so it keeps working when your baby moves during the night.</p>
+      <p class="sub" style="color:var(--coral)"><strong>The box must contain your baby only.</strong> If it can include a co-sleeping adult, the monitor may measure <em>their</em> breathing instead of your baby's.</p>
       <div class="viewer" id="regionViewer">
         <img id="regionImg" alt="Live camera frame">
         <canvas id="regionCanvas" class="draw" aria-label="Drag to select the breathing region"></canvas>
         <div class="veil" id="regionVeil">Connecting to the camera stream…</div>
-        <div class="scanveil" id="scanVeil" hidden>
-          <div class="ring">
-            <svg width="120" height="120"><circle cx="60" cy="60" r="52" fill="none" stroke="rgba(244,239,230,.12)" stroke-width="7"/><circle id="ringArc" cx="60" cy="60" r="52" fill="none" stroke="#ffc98a" stroke-width="7" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"/></svg>
-            <div class="pct" id="ringPct">0%</div>
-          </div>
-          <div class="lbl">Keep the room still — watching for the rhythm of breathing…<br><button class="btn-quiet" id="cancelScan">Cancel</button></div>
-        </div>
       </div>
       <p id="scanMsg" class="msg" style="min-height:22px;margin:12px 0 0" role="status"></p>
       <div class="actions">
         <button class="btn-ghost" id="backTo2">Back</button>
-        <button class="btn-primary" id="autoBtn">✨ Auto-detect breathing region</button>
         <button class="btn-primary" id="saveRegion" disabled>Save region</button>
-        <span class="hint" id="regionHint">…or drag a box over the chest and tummy.</span>
+        <span class="hint" id="regionHint">Drag on the picture to draw the box.</span>
       </div>
     </div>
+
     <div class="step card reveal" id="step4" hidden>
       <h1>Connect to Home Assistant</h1>
       <p class="sub">Readings become Home Assistant entities through MQTT. The broker bundled with Home Assistant (the Mosquitto add-on) needs zero setup — or point at a broker running anywhere else on your network.</p>
@@ -269,7 +257,7 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
             <div class="veil" id="dashVeil">Waiting for camera…</div>
           </div>
           <div class="actions">
-            <button class="btn-ghost" id="redetect">Re-detect region</button>
+            <button class="btn-ghost" id="redetect">Edit region</button>
             <button class="btn-ghost" id="editCam">Camera</button>
             <button class="btn-ghost" id="editMqtt">MQTT</button>
           </div>
@@ -320,7 +308,7 @@ const prettyReason=r=>{if(!r)return"";if(r.startsWith("respiration_signal_missin
 
 /* ---------- view state ---------- */
 let status=null,view=null,wstep=0,forced=null; // forced: "camera"|"region"|null
-let pendingRoi=null,roiDirty=false,scanWasRunning=false,lastFrameOk=false;
+let pendingRoi=null,roiDirty=false,lastFrameOk=false;
 let engaged=false; // any wizard interaction pins the wizard view
 ["pointerdown","keydown"].forEach(ev=>document.addEventListener(ev,e=>{if(!$("wizard").hidden)engaged=true}));
 
@@ -338,14 +326,12 @@ function setStep(n){
 /* ---------- shared frame + ROI drawing ---------- */
 function fitCanvas(cv,img){const r=img.getBoundingClientRect(),d=devicePixelRatio||1;if(!r.width)return null;cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d);const x=cv.getContext("2d");x.scale(d,d);return{x,w:r.width,h:r.height}}
 function drawRoiRect(x,roi,w,h,color,fill){const[rx,ry,rw,rh]=roi;x.fillStyle=fill;x.strokeStyle=color;x.lineWidth=2;x.beginPath();x.roundRect(rx*w,ry*h,rw*w,rh*h,10);x.fill();x.stroke()}
-function drawHeatmap(x,hm,w,h){const rows=hm.length,cols=hm[0].length;for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const v=hm[r][c];if(v>0.12){x.fillStyle=`rgba(123,224,195,${(v*0.4).toFixed(3)})`;x.fillRect(c*w/cols,r*h/rows,w/cols+0.5,h/rows+0.5)}}}
 
 function renderRegionCanvas(){
   const view=fitCanvas($("regionCanvas"),$("regionImg"));if(!view)return;
-  const{x,w,h}=view,scan=(status&&status.scan&&status.scan.purpose==="user")?status.scan:null;
-  if(scan&&scan.state==="done"&&scan.result&&!roiDirty){drawHeatmap(x,scan.result.heatmap,w,h);drawRoiRect(x,scan.result.roi,w,h,"#ffc98a","rgba(255,201,138,.14)")}
+  const{x,w,h}=view;
   if(pendingRoi)drawRoiRect(x,pendingRoi,w,h,"#7be0c3","rgba(123,224,195,.15)");
-  else if(!scan||scan.state!=="done")if(status&&status.roi)drawRoiRect(x,status.roi,w,h,"rgba(244,239,230,.35)","rgba(244,239,230,.05)");
+  else if(status&&status.roi)drawRoiRect(x,status.roi,w,h,"rgba(244,239,230,.35)","rgba(244,239,230,.05)");
 }
 function renderDashCanvas(){
   const view=fitCanvas($("dashCanvas"),$("dashImg"));if(!view||!status)return;
@@ -359,7 +345,7 @@ function renderDashCanvas(){
   const pt=e=>{const r=cv.getBoundingClientRect();return[Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))]};
   cv.addEventListener("pointerdown",e=>{start=pt(e);cv.setPointerCapture(e.pointerId)});
   cv.addEventListener("pointermove",e=>{if(!start)return;const p=pt(e);pendingRoi=[Math.min(start[0],p[0]),Math.min(start[1],p[1]),Math.abs(p[0]-start[0]),Math.abs(p[1]-start[1])];roiDirty=true;renderRegionCanvas()});
-  cv.addEventListener("pointerup",e=>{if(!start)return;start=null;if(pendingRoi&&pendingRoi[2]>0.02&&pendingRoi[3]>0.02){$("saveRegion").disabled=false;const area=pendingRoi[2]*pendingRoi[3],msg=$("scanMsg");if(area>0.25){msg.className="msg err";msg.textContent=`Big box (${Math.round(area*100)}% of the image) — fine for a baby that moves, but it must NEVER be able to include another sleeper: the monitor locks onto the strongest breathing inside it.`}else{msg.className="msg";msg.textContent="Region selected — save it when it hugs the chest and tummy."}}else{pendingRoi=null;renderRegionCanvas()}});
+  cv.addEventListener("pointerup",e=>{if(!start)return;start=null;if(pendingRoi&&pendingRoi[2]>0.02&&pendingRoi[3]>0.02){$("saveRegion").disabled=false;const area=pendingRoi[2]*pendingRoi[3],msg=$("scanMsg");if(area>0.25){msg.className="msg err";msg.textContent=`Big box (${Math.round(area*100)}% of the image) — fine for a baby that moves, but it must NEVER be able to include another sleeper: the monitor locks onto the strongest breathing inside it.`}else{msg.className="msg";msg.textContent="Region selected — save it when it hugs the chest and tummy."}}else{pendingRoi=null;$("saveRegion").disabled=true;renderRegionCanvas()}});
 })();
 
 /* ---------- wizard wiring ---------- */
@@ -384,14 +370,8 @@ $("useCamera").addEventListener("click",async()=>{
   catch(e){$("testMsg").className="msg err";$("testMsg").textContent=e.message}
 });
 
-$("autoBtn").addEventListener("click",async()=>{
-  const msg=$("scanMsg");msg.className="msg";msg.textContent="";pendingRoi=null;roiDirty=false;$("saveRegion").disabled=true;
-  try{const r=await post("api/scan/start");if(!r.ok){msg.className="msg err";msg.textContent=r.message;return}scanWasRunning=true;$("scanVeil").hidden=false}
-  catch(e){msg.className="msg err";msg.textContent=e.message}
-});
-$("cancelScan").addEventListener("click",()=>{post("api/scan/cancel").catch(()=>{});$("scanVeil").hidden=true;scanWasRunning=false});
 $("saveRegion").addEventListener("click",async()=>{
-  const roi=pendingRoi||(status.scan&&status.scan.purpose==="user"&&status.scan.result&&status.scan.result.roi);if(!roi)return;
+  const roi=pendingRoi;if(!roi)return;
   try{await post("api/settings",{roi});pendingRoi=null;if(forced){forced=null;setView("dashboard")}else setStep(4);}
   catch(e){$("scanMsg").className="msg err";$("scanMsg").textContent=e.message}
 });
@@ -431,30 +411,6 @@ $("saveMqtt").addEventListener("click",async()=>{
 });
 $("editCam").addEventListener("click",()=>{forced="camera";setView("wizard",2)});
 
-/* ---------- scan progress ---------- */
-function renderScan(){
-  const scan=(status.scan&&status.scan.purpose==="user")?status.scan:{state:"idle"};
-  $("saveRegion").disabled=!(pendingRoi||(scan.state==="done"&&scan.result));
-  if(scan.state==="running"){
-    $("scanVeil").hidden=false;scanWasRunning=true;
-    const p=Math.round((scan.progress||0)*100);
-    $("ringPct").textContent=p+"%";$("ringArc").style.strokeDashoffset=(326.7*(1-(scan.progress||0))).toFixed(1);
-  }else{
-    $("scanVeil").hidden=true;
-    if(scanWasRunning){ // just finished
-      scanWasRunning=false;const msg=$("scanMsg");
-      if(scan.state==="done"&&scan.result){msg.className="msg";msg.textContent=`Found periodic motion at ~${scan.result.bpm} breaths/min (quality ${scan.result.quality}%). Check the box is on your baby — not bedding or another sleeper — then save.`;$("saveRegion").disabled=false}
-      else if(scan.state==="failed"){msg.className="msg err";msg.textContent={
-        excessive_motion_during_scan:"Too much movement during the scan — try again when the room is calm.",
-        too_few_frames:"The camera delivered too few frames — check the connection and retry.",
-        no_periodic_motion_found:"No clear breathing rhythm found. Make sure the chest area is visible, or drag the box manually.",
-        frame_too_small_for_scan:"The video resolution is too low to scan.",
-        analysis_error:"The scan hit an internal error — please retry.",
-      }[scan.reason]||("Scan failed: "+(scan.reason||"unknown"))}
-    }
-  }
-}
-
 /* ---------- dashboard rendering ---------- */
 const STATES={
   BREATHING:{cls:"pill ok",lbl:"Breathing detected",hero:""},
@@ -476,7 +432,7 @@ function renderDash(){
   const conf=Math.round(s.confidence||0);$("confFill").style.width=conf+"%";$("confPct").textContent=conf;
   $("roiLbl").textContent="region "+ (s.roi||[]).map(v=>Number(v).toFixed(2)).join(", ");
   const hint=$("suggestHint");
-  if(s.roi_suggestion){hint.hidden=false;hint.textContent=`Breathing found outside your region (~${Math.round(s.roi_suggestion.bpm)} BPM) — consider Re-detect.`}
+  if(s.roi_suggestion){hint.hidden=false;hint.textContent=`Breathing found outside your region (~${Math.round(s.roi_suggestion.bpm)} BPM) — consider enlarging or moving your box.`}
   else hint.hidden=true;
   const area=(s.roi&&s.roi[2]*s.roi[3])||0,warn=$("roiWarn");
   if(area>0.25){warn.hidden=false;warn.textContent=`⚠ Big region (${Math.round(area*100)}% of the image): supported — the mint dashed box shows where breathing is measured right now — but it must never be able to include a co-sleeping adult.`}
@@ -521,7 +477,6 @@ async function tick(){
     if($("ack").checked)localStorage.setItem("bb-ack","1");
     $("cfgNote").hidden=!status.camera_configured;
     $("waveSpan").textContent=Math.round(status.window_seconds||24);
-    if(view==="wizard"&&wstep===3)renderScan();
     if(view==="dashboard")renderDash();
   }catch(e){/* transient */}
 }

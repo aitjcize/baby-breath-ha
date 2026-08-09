@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.5
+
+- Removed the user-facing auto-detect region feature: with block-adaptive measurement, drawing a generous box by hand is simpler and more predictable than the scan's suggestions. The wizard step is now draw-only, and the dashboard button is renamed **Edit region**. (Full-frame scans remain internal to presence verification, which they were designed for.)
+
 ## 0.3.4
 
 Large boxes are now first-class — drawn generously so a moving baby stays covered:

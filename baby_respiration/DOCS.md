@@ -16,7 +16,7 @@ Open the **Baby Respiration** panel in the sidebar. The wizard walks you through
 
 1. **Safety acknowledgement** — please read it for real.
 2. **Camera** — paste your camera's RTSP URL (found in the camera app under RTSP/ONVIF/local streaming) and test the connection; a preview frame confirms you have the right camera. No camera handy? Enter `demo://breathing` to explore with a synthetic scene.
-3. **Breathing region** — press **Auto-detect breathing region**: the add-on watches ~30 seconds of video for periodic motion in the breathing band and suggests the region to measure. Keep the room still during the scan. You can always drag the box manually; keep it snug around the chest and tummy, away from crib rails and loose blankets.
+3. **Breathing region** — drag a box over where your baby sleeps. Draw it generously: the monitor finds and follows the breathing rhythm within the box, so it keeps working when your baby moves during the night.
 
 **The box is a search area.** Inside it, the monitor scores small blocks for breathing-band rhythm every window and measures from the block that currently carries it — the dashboard shows that active sub-region as a dashed mint box. This means the box may be drawn generously to allow the baby to move during sleep; static bedding inside it does not dilute the signal.
 
@@ -24,7 +24,7 @@ Open the **Baby Respiration** panel in the sidebar. The wizard walks you through
 
 4. **Home Assistant** — choose how readings reach Home Assistant: the broker Home Assistant provides (default, zero setup), a **custom MQTT broker** running anywhere on your network (host, port, credentials), or no MQTT at all. The panel shows live connection status while you save.
 
-Settings persist across restarts and updates. Use **Re-detect region**, **Camera…**, or **MQTT…** on the dashboard to change them later.
+Settings persist across restarts and updates. Use **Edit region**, **Camera**, or **MQTT** on the dashboard to change them later.
 
 ## What the states mean
 
@@ -43,7 +43,7 @@ The camera is always on, but the baby is not always in the crib. Rather than an 
 
 - A confirmed breathing signal marks the baby **present** at any time.
 - A sudden loss of breathing **without** a preceding pickup-shaped disturbance keeps presence at *present* — apnea does not look like a pickup, so it can never be mistaken for absence, and the no-breathing alert path stays fully armed.
-- After a pickup-shaped disturbance with no signal, the add-on runs full-frame breathing scans: breathing anywhere → *present* (if it is outside your configured region, the panel suggests re-detecting); two clean empty scans → *absent*, monitoring pauses.
+- After a pickup-shaped disturbance with no signal, the add-on runs full-frame breathing scans: breathing anywhere → *present* (if it is outside your configured region, the panel suggests enlarging or moving your box); two clean empty scans → *absent*, monitoring pauses.
 - Another disturbance (baby returned) triggers re-verification, and monitoring resumes on its own.
 
 Presence has an honest `UNKNOWN` state (startup, prolonged verification failure). Known limitation: if a caregiver rearranges bedding such that breathing becomes unmeasurable *anywhere* in the frame, absence can be inferred wrongly — no camera-based method (ML included) can see through that; consider a gentle notification on prolonged `UNKNOWN`/`ABSENT` during expected sleep hours. Disable the feature with the `presence_detection` option to always treat the crib as occupied.

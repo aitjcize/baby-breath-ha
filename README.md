@@ -11,9 +11,9 @@ An experimental, local-only detector that estimates respiration-like chest/abdom
 3. Open the **Baby Respiration** panel in the sidebar. The onboarding wizard takes it from there:
    - **Safety acknowledgement** — the honest talk about what this can and cannot do.
    - **Camera** — paste the RTSP URL, press *Test connection*, and confirm the preview shows the crib. No camera handy? `demo://breathing` starts a synthetic scene.
-   - **Breathing region** — press *Auto-detect breathing region*: a ~30 s optical-flow scan finds where periodic breathing-band motion lives (works in IR night vision; no ML model involved) and suggests the measurement box, which you can accept or drag to adjust.
+   - **Breathing region** — drag a generous box over where your baby sleeps; the monitor scores small blocks inside it for breathing-band rhythm and measures from whichever block currently carries it, following the baby as they move.
 
-Everything entered in the wizard persists in the add-on's data and applies without a restart. The dashboard offers **Re-detect region** and **Camera…** to change things later.
+Everything entered in the wizard persists in the add-on's data and applies without a restart. The dashboard offers **Edit region**, **Camera**, and **MQTT** to change things later.
 
 The add-on details live in [`baby_respiration/`](baby_respiration/): [DOCS.md](baby_respiration/DOCS.md) covers entities, options, and limitations; [CHANGELOG.md](baby_respiration/CHANGELOG.md) tracks releases.
 
@@ -31,7 +31,7 @@ The conservative state machine distinguishes:
 
 While invalid, MQTT marks the rate/breathing entities *unavailable* rather than reporting zero BPM or `OFF`. Automations must gate `baby_breathing_detected` on `baby_respiration_measurement_valid`, and must never be life-safety automations.
 
-The breathing-region auto-detect reuses the same optical flow: every image block is scored for periodicity inside the breathing band over a ~30 s window, and the coherent cluster with the strongest periodic motion becomes the suggested region. Because it looks for the signal itself rather than a baby-shaped object, it works under IR night vision and blankets where object detectors struggle.
+The same per-block periodicity scoring runs in two more places: inside the user's box every analysis window (to pick the block currently carrying breathing), and across the full frame after pickup-shaped disturbances (to verify crib occupancy for presence detection). Because it looks for the signal itself rather than a baby-shaped object, it works under IR night vision and blankets where object detectors struggle.
 
 ## Development
 

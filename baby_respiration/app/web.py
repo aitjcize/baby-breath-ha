@@ -33,10 +33,6 @@ class Controller(Protocol):
 
     def apply_settings(self, rtsp_url: str | None = None, roi: Any = None, mqtt: dict[str, Any] | None = None) -> dict[str, Any]: ...
 
-    def start_scan(self) -> tuple[bool, str]: ...
-
-    def cancel_scan(self) -> None: ...
-
 
 class WebState:
     """Thread-safe holder for the latest status payload and annotated frame."""
@@ -116,7 +112,7 @@ def _handler(state: WebState, controller: Controller | None) -> type[BaseHTTPReq
                 self._send_json({"error": "missing X-Requested-With header"}, HTTPStatus.FORBIDDEN)
                 return
             try:
-                payload = self._read_json_body() if path in ("/api/probe", "/api/settings") else {}
+                payload = self._read_json_body()
                 if path == "/api/probe":
                     url = str(payload.get("url", ""))
                     self._send_json(controller.probe(url))
@@ -127,12 +123,6 @@ def _handler(state: WebState, controller: Controller | None) -> type[BaseHTTPReq
                         mqtt=payload.get("mqtt"),
                     )
                     self._send_json(result)
-                elif path == "/api/scan/start":
-                    ok, message = controller.start_scan()
-                    self._send_json({"ok": ok, "message": message}, HTTPStatus.OK if ok else HTTPStatus.CONFLICT)
-                elif path == "/api/scan/cancel":
-                    controller.cancel_scan()
-                    self._send_json({"ok": True})
                 else:
                     self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
             except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
