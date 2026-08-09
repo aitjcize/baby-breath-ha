@@ -36,6 +36,9 @@ class SignalConfig:
     excessive_motion_threshold: float = 1.5
     minimum_signal_rms: float = 0.001
     minimum_snr_db: float = 3.0
+    # Samples deviating more than this many MADs from the window median are
+    # transients (twitches, brushed limbs) and are masked out; 0 disables.
+    transient_mad_threshold: float = 6.0
     minimum_image_contrast: float = 3.0
     minimum_sharpness: float = 1.0
     maximum_interpolation_gap: float = 1.0

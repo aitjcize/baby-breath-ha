@@ -35,9 +35,30 @@ class RespirationEstimator:
         self.camera = camera
         self.config = config
         self._history: deque[MotionObservation] = deque()
+        self._was_breathing = False
 
     def clear(self) -> None:
         self._history.clear()
+        self._was_breathing = False
+
+    def _apply_gates(self, rms: float, snr_db: float, confidence: float, was_breathing: bool) -> tuple[bool, bool]:
+        """Schmitt-trigger gating: a marginal dip does not unlock a held signal.
+
+        A borderline signal hovering at a threshold otherwise flaps the state
+        every few seconds. The relaxed exit thresholds apply only while
+        breathing was being reported in the previous estimate.
+        """
+        rms_floor = self.config.minimum_signal_rms
+        snr_floor = self.config.minimum_snr_db
+        confidence_floor = self.config.minimum_confidence
+        if was_breathing:
+            rms_floor *= 0.7
+            snr_floor -= 1.5
+            confidence_floor -= 8.0
+        observable = rms >= rms_floor and snr_db >= snr_floor
+        breathing = observable and confidence >= confidence_floor
+        self._was_breathing = breathing
+        return observable, breathing
 
     def add(self, observation: MotionObservation) -> None:
         self._history.append(observation)
@@ -46,6 +67,8 @@ class RespirationEstimator:
             self._history.popleft()
 
     def estimate(self, now: float | None = None) -> RespirationEstimate:
+        was_breathing = self._was_breathing
+        self._was_breathing = False  # any early exit drops the hysteresis lock
         if not self._history:
             return RespirationEstimate()
         if now is None:
@@ -89,6 +112,29 @@ class RespirationEstimator:
 
         valid_t = np.asarray([item.timestamp for item in valid], dtype=np.float64)
         valid_y = np.asarray([item.value for item in valid], dtype=np.float64)
+
+        # Transient rejection: twitches and brushed limbs are far larger than
+        # breathing but below the excessive-motion gate, and one spike poisons
+        # the whole spectral window. Mask samples deviating too many MADs from
+        # the window median; the surrounding clean breathing carries on.
+        transients_rejected = 0
+        if self.config.transient_mad_threshold > 0 and valid_y.size:
+            median_value = float(np.median(valid_y))
+            mad_std = 1.4826 * float(np.median(np.abs(valid_y - median_value)))
+            limit = self.config.transient_mad_threshold * max(mad_std, 1e-6)
+            keep = np.abs(valid_y - median_value) <= limit
+            transients_rejected = int(valid_y.size - np.count_nonzero(keep))
+            if transients_rejected:
+                valid_t = valid_t[keep]
+                valid_y = valid_y[keep]
+                valid_fraction = valid_y.size / len(observations)
+                if valid_y.size < 8:
+                    return RespirationEstimate(
+                        data_completeness=valid_fraction,
+                        reason="too_few_valid_motion_samples",
+                        **base,
+                    )
+
         sample_rate = min(self.camera.processing_fps, estimated_fps)
         grid = np.arange(timestamps[0], timestamps[-1], 1.0 / sample_rate)
         if grid.size < 16:
@@ -173,11 +219,7 @@ class RespirationEstimator:
             + 0.05 * stability
         )
         confidence = float(np.clip(confidence, 0.0, 100.0))
-        signal_observable = (
-            rms >= self.config.minimum_signal_rms
-            and snr_db >= self.config.minimum_snr_db
-        )
-        breathing_signal = signal_observable and confidence >= self.config.minimum_confidence
+        signal_observable, breathing_signal = self._apply_gates(rms, snr_db, confidence, was_breathing)
         reason = "breathing_signal" if breathing_signal else (
             "signal_snr_too_low" if not signal_observable else "periodicity_confidence_low"
         )
