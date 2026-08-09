@@ -64,12 +64,88 @@ def test_hysteresis_holds_marginal_signal() -> None:
     estimator = RespirationEstimator(camera, config)
 
     # Locked: dips within the hysteresis margin stay on.
-    assert estimator._apply_gates(rms=0.002, snr_db=5.0, confidence=60.0, was_breathing=False) == (True, True)
-    assert estimator._apply_gates(rms=0.0008, snr_db=2.0, confidence=49.0, was_breathing=True) == (True, True)
+    assert estimator._apply_gates(rms=0.002, snr_db=5.0, confidence=60.0, concentration=0.3, was_breathing=False) == (True, True)
+    assert estimator._apply_gates(rms=0.0008, snr_db=2.0, confidence=49.0, concentration=0.3, was_breathing=True) == (True, True)
     # The same marginal values from cold do not lock on.
-    assert estimator._apply_gates(rms=0.0008, snr_db=2.0, confidence=49.0, was_breathing=False) == (False, False)
+    assert estimator._apply_gates(rms=0.0008, snr_db=2.0, confidence=49.0, concentration=0.3, was_breathing=False) == (False, False)
     # Dips beyond the margin release even a held lock.
-    assert estimator._apply_gates(rms=0.002, snr_db=1.0, confidence=49.0, was_breathing=True) == (False, False)
+    assert estimator._apply_gates(rms=0.002, snr_db=1.0, confidence=49.0, concentration=0.3, was_breathing=True) == (False, False)
+
+
+def test_clear_spectral_pattern_overrides_amplitude_floor() -> None:
+    """Unambiguous rhythm (high SNR + concentrated peak) is not vetoed for size."""
+    camera = CameraConfig(processing_fps=5.0)
+    config = SignalConfig(minimum_snr_db=3.0, minimum_confidence=55.0, minimum_signal_rms=0.001)
+    estimator = RespirationEstimator(camera, config)
+
+    # The real-world case: rms 0.00058 with SNR 9.3 dB and a clear peak.
+    assert estimator._apply_gates(rms=0.00058, snr_db=9.3, confidence=59.0, concentration=0.6, was_breathing=False) == (True, True)
+    # Same amplitude without the clear pattern still fails.
+    assert estimator._apply_gates(rms=0.00058, snr_db=9.3, confidence=59.0, concentration=0.3, was_breathing=False) == (False, False)
+    # The hard floor still applies even with a clear pattern.
+    assert estimator._apply_gates(rms=0.0002, snr_db=9.3, confidence=59.0, concentration=0.6, was_breathing=False) == (False, False)
+
+
+def make_block_observation(timestamp: float, blocks: list[float]) -> MotionObservation:
+    return MotionObservation(
+        timestamp, float(np.median(blocks)), True, False, 0.02, 0.04, 30.0, 20.0, 100.0, 1.0, "ok",
+        block_values=tuple(blocks),
+    )
+
+
+def test_block_selection_finds_breathing_in_large_box() -> None:
+    """A big box mostly full of static bedding must still detect: the
+    estimator measures from the block that carries the rhythm."""
+    rng = np.random.default_rng(11)
+    camera = CameraConfig(processing_fps=5.0)
+    config = SignalConfig(minimum_confidence=50.0)
+    estimator = RespirationEstimator(camera, config)
+    active = 7  # the "chest" block among 12
+    timestamp = 0.0
+    for index in range(30 * 5):
+        timestamp = index / 5.0
+        blocks = list(rng.normal(0, 0.0004, size=12))  # static bedding noise
+        blocks[active] += 0.012 * np.sin(2 * np.pi * (42.0 / 60.0) * timestamp) + rng.normal(0, 0.002)
+        estimator.add(make_block_observation(timestamp, blocks))
+
+    result = estimator.estimate(timestamp)
+    assert result.breathing_signal, result.reason
+    assert result.selected_block == active
+    assert result.bpm is not None and abs(result.bpm - 42.0) < 4.0
+
+    # The whole-box median of the same data is diluted into failure,
+    # proving block selection is what saves the large box.
+    plain = RespirationEstimator(camera, SignalConfig(minimum_confidence=50.0))
+    for item in estimator._history:
+        plain.add(MotionObservation(
+            item.timestamp, item.value, item.valid, item.excessive_motion, 0.02, 0.04,
+            30.0, 20.0, 100.0, 1.0, "ok", block_values=None,
+        ))
+    assert not plain.estimate(timestamp).breathing_signal
+
+
+def test_block_selection_follows_moving_baby() -> None:
+    rng = np.random.default_rng(13)
+    camera = CameraConfig(processing_fps=5.0)
+    config = SignalConfig(minimum_confidence=50.0)
+    estimator = RespirationEstimator(camera, config)
+
+    def feed(start: float, seconds: float, active: int) -> float:
+        timestamp = start
+        for index in range(int(seconds * 5)):
+            timestamp = start + index / 5.0
+            blocks = list(rng.normal(0, 0.0004, size=12))
+            blocks[active] += 0.012 * np.sin(2 * np.pi * (40.0 / 60.0) * timestamp) + rng.normal(0, 0.002)
+            estimator.add(make_block_observation(timestamp, blocks))
+        return timestamp
+
+    end = feed(0.0, 30.0, active=2)
+    assert estimator.estimate(end).selected_block == 2
+    # Baby moves: rhythm relocates to block 9; the next full window follows.
+    end = feed(end + 0.2, 30.0, active=9)
+    result = estimator.estimate(end)
+    assert result.selected_block == 9
+    assert result.breathing_signal, result.reason
 
 
 def test_invalid_samples_fail_invalid() -> None:

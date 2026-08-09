@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.4
+
+Large boxes are now first-class — drawn generously so a moving baby stays covered:
+
+- Block-adaptive measurement: the region is a search area. Every analysis window scores ~20 px blocks inside it for breathing-band periodicity and measures from the block that carries the rhythm, so static bedding no longer dilutes the median. The dashboard shows the active sub-region as a dashed mint box. Sticky selection avoids hopping between neighbouring blocks.
+- Spectral evidence beats the amplitude threshold: a clearly concentrated peak with SNR ≥ minimum+5 dB lowers the RMS floor to 30% of the configured value. Frequency-domain checks (Welch spectrum peak, concentration, SNR) were already the core of detection; the absolute amplitude floor no longer vetoes an unambiguous rhythm.
+- Safety wording updated everywhere: because the monitor locks onto the strongest breathing inside the box, a big box must never be able to include a co-sleeping adult.
+
 ## 0.3.3
 
 - New `binary_sensor.baby_breathing_rate_low` (device class *problem*): turns on while the measured rate sits below the configurable `low_rate_threshold_bpm` option (default 20, 0 disables), with a +2 BPM clear hysteresis. Build notifications on it in Home Assistant with a `for:` duration. Rates below `min_bpm` remain unmeasurable by design and surface as signal loss / `NO_BREATHING_SIGNAL` instead.

@@ -26,6 +26,7 @@ class RespirationEstimate:
     window_seconds: float = 0.0
     excessive_motion: bool = False
     reason: str = "insufficient_data"
+    selected_block: int | None = None
     waveform_t: list[float] = field(default_factory=list)
     waveform_y: list[float] = field(default_factory=list)
 
@@ -36,17 +37,79 @@ class RespirationEstimator:
         self.config = config
         self._history: deque[MotionObservation] = deque()
         self._was_breathing = False
+        self._selected_block: int | None = None
 
     def clear(self) -> None:
         self._history.clear()
         self._was_breathing = False
+        self._selected_block = None
 
-    def _apply_gates(self, rms: float, snr_db: float, confidence: float, was_breathing: bool) -> tuple[bool, bool]:
-        """Schmitt-trigger gating: a marginal dip does not unlock a held signal.
+    @staticmethod
+    def _block_matrix(valid: list[MotionObservation]) -> np.ndarray | None:
+        if not valid or any(item.block_values is None for item in valid):
+            return None
+        lengths = {len(item.block_values) for item in valid}  # type: ignore[arg-type]
+        if len(lengths) != 1 or lengths.pop() <= 1:
+            return None
+        return np.asarray([item.block_values for item in valid], dtype=np.float64)
+
+    def _select_block(
+        self,
+        matrix: np.ndarray,
+        valid_t: np.ndarray,
+        grid: np.ndarray,
+        sample_rate: float,
+    ) -> int | None:
+        """Pick the ROI block with the strongest breathing-band periodicity.
+
+        Prefers the previously selected block unless another clearly beats it,
+        so the measurement doesn't hop between neighbours every second.
+        """
+        low_hz = self.config.min_bpm / 60.0
+        high_hz = min(self.config.max_bpm / 60.0, 0.45 * sample_rate)
+        if high_hz <= low_hz:
+            return None
+        try:
+            sos = scipy_signal.butter(3, [low_hz, high_hz], btype="bandpass", fs=sample_rate, output="sos")
+            uniform = np.empty((grid.size, matrix.shape[1]), dtype=np.float64)
+            for index in range(matrix.shape[1]):
+                uniform[:, index] = np.interp(grid, valid_t, matrix[:, index])
+            detrended = scipy_signal.detrend(uniform, axis=0, type="linear")
+            filtered = scipy_signal.sosfiltfilt(sos, detrended, axis=0)
+        except ValueError:
+            return None
+        total_std = detrended.std(axis=0)
+        band_std = filtered.std(axis=0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            periodicity = np.where(total_std > 1e-9, (band_std / np.maximum(total_std, 1e-12)) ** 2, 0.0)
+        scores = periodicity * band_std
+        best = int(np.argmax(scores))
+        if scores[best] <= 0:
+            self._selected_block = None
+            return None
+        previous = self._selected_block
+        if previous is not None and previous < scores.size and scores[previous] >= 0.75 * scores[best]:
+            best = previous
+        self._selected_block = best
+        return best
+
+    def _apply_gates(
+        self,
+        rms: float,
+        snr_db: float,
+        confidence: float,
+        concentration: float,
+        was_breathing: bool,
+    ) -> tuple[bool, bool]:
+        """Schmitt-trigger gating with spectral-evidence priority.
 
         A borderline signal hovering at a threshold otherwise flaps the state
-        every few seconds. The relaxed exit thresholds apply only while
-        breathing was being reported in the previous estimate.
+        every few seconds; the relaxed exit thresholds apply only while
+        breathing was being reported. And when the spectrum shows a clear,
+        concentrated breathing peak, the configured amplitude floor drops to a
+        minimal hard floor — unambiguous rhythm should not be vetoed for being
+        small (camera-distance dependent), while artifacts and noise still
+        fail the spectral checks.
         """
         rms_floor = self.config.minimum_signal_rms
         snr_floor = self.config.minimum_snr_db
@@ -55,6 +118,9 @@ class RespirationEstimator:
             rms_floor *= 0.7
             snr_floor -= 1.5
             confidence_floor -= 8.0
+        clear_pattern = concentration >= 0.5 and snr_db >= self.config.minimum_snr_db + 5.0
+        if clear_pattern:
+            rms_floor *= 0.3
         observable = rms >= rms_floor and snr_db >= snr_floor
         breathing = observable and confidence >= confidence_floor
         self._was_breathing = breathing
@@ -111,7 +177,23 @@ class RespirationEstimator:
             )
 
         valid_t = np.asarray([item.timestamp for item in valid], dtype=np.float64)
-        valid_y = np.asarray([item.value for item in valid], dtype=np.float64)
+        sample_rate = min(self.camera.processing_fps, estimated_fps)
+        grid = np.arange(timestamps[0], timestamps[-1], 1.0 / sample_rate)
+        if grid.size < 16:
+            return RespirationEstimate(reason="too_few_resampled_samples", **base)
+
+        # Block-adaptive measurement: the user's box is a search area. Score
+        # every ROI block for breathing-band periodicity and measure from the
+        # one that carries the rhythm — a large box drawn to allow the baby to
+        # move no longer dilutes the signal with static bedding.
+        selected_block: int | None = None
+        block_matrix = self._block_matrix(valid)
+        if block_matrix is not None:
+            selected_block = self._select_block(block_matrix, valid_t, grid, sample_rate)
+        if selected_block is not None and block_matrix is not None:
+            valid_y = block_matrix[:, selected_block].astype(np.float64)
+        else:
+            valid_y = np.asarray([item.value for item in valid], dtype=np.float64)
 
         # Transient rejection: twitches and brushed limbs are far larger than
         # breathing but below the excessive-motion gate, and one spike poisons
@@ -134,11 +216,6 @@ class RespirationEstimator:
                         reason="too_few_valid_motion_samples",
                         **base,
                     )
-
-        sample_rate = min(self.camera.processing_fps, estimated_fps)
-        grid = np.arange(timestamps[0], timestamps[-1], 1.0 / sample_rate)
-        if grid.size < 16:
-            return RespirationEstimate(reason="too_few_resampled_samples", **base)
 
         interpolated = np.interp(grid, valid_t, valid_y)
         insertion = np.searchsorted(valid_t, grid)
@@ -219,7 +296,7 @@ class RespirationEstimator:
             + 0.05 * stability
         )
         confidence = float(np.clip(confidence, 0.0, 100.0))
-        signal_observable, breathing_signal = self._apply_gates(rms, snr_db, confidence, was_breathing)
+        signal_observable, breathing_signal = self._apply_gates(rms, snr_db, confidence, concentration, was_breathing)
         reason = "breathing_signal" if breathing_signal else (
             "signal_snr_too_low" if not signal_observable else "periodicity_confidence_low"
         )
@@ -238,6 +315,7 @@ class RespirationEstimator:
             peak_concentration=concentration,
             data_completeness=completeness,
             reason=reason,
+            selected_block=selected_block,
             waveform_t=waveform_t,
             waveform_y=waveform_y,
             **base,

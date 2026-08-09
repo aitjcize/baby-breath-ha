@@ -8,6 +8,9 @@ import numpy as np
 from app.config import CameraConfig, SignalConfig
 
 
+BLOCK_SIZE = 20  # px on the processed frame; matches the region scanner
+
+
 @dataclass(frozen=True)
 class MotionObservation:
     timestamp: float
@@ -21,6 +24,10 @@ class MotionObservation:
     brightness: float
     frame_change: float
     reason: str
+    # Per-block median vertical flow inside the ROI (row-major), so the
+    # estimator can measure from the block that currently carries breathing
+    # instead of a whole-box median that static bedding dilutes.
+    block_values: tuple[float, ...] | None = None
 
 
 class DenseOpticalFlowExtractor:
@@ -34,11 +41,15 @@ class DenseOpticalFlowExtractor:
         # Residual vertical flow of the latest frame pair (global motion already
         # subtracted), for consumers such as the breathing-region scanner.
         self.last_residual_dy: np.ndarray | None = None
+        # Normalized (x, y, w, h) of each ROI block, row-major, matching the
+        # order of MotionObservation.block_values.
+        self.block_rects: list[tuple[float, float, float, float]] | None = None
 
     def reset(self) -> None:
         self._previous_gray = None
         self._frozen_frames = 0
         self.last_residual_dy = None
+        self.block_rects = None
 
     def _prepare(self, frame: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         height, width = frame.shape[:2]
@@ -51,6 +62,33 @@ class DenseOpticalFlowExtractor:
             )
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         return frame, gray
+
+    def _block_medians(
+        self,
+        residual_y: np.ndarray,
+        x0: int,
+        y0: int,
+        frame_shape: tuple[int, ...],
+    ) -> tuple[float, ...] | None:
+        rows = residual_y.shape[0] // BLOCK_SIZE
+        cols = residual_y.shape[1] // BLOCK_SIZE
+        if rows * cols <= 1:
+            return None  # ROI too small to subdivide; whole-box median is used
+        cropped = residual_y[: rows * BLOCK_SIZE, : cols * BLOCK_SIZE]
+        medians = np.median(cropped.reshape(rows, BLOCK_SIZE, cols, BLOCK_SIZE), axis=(1, 3))
+        if self.block_rects is None:
+            height, width = frame_shape[:2]
+            self.block_rects = [
+                (
+                    (x0 + col * BLOCK_SIZE) / width,
+                    (y0 + row * BLOCK_SIZE) / height,
+                    BLOCK_SIZE / width,
+                    BLOCK_SIZE / height,
+                )
+                for row in range(rows)
+                for col in range(cols)
+            ]
+        return tuple(float(value) for value in medians.ravel())
 
     def roi_pixels(self, shape: tuple[int, ...]) -> tuple[int, int, int, int]:
         height, width = shape[:2]
@@ -111,6 +149,7 @@ class DenseOpticalFlowExtractor:
         residual_x = roi_flow[..., 0] - global_dx
         residual_y = roi_flow[..., 1] - global_dy
         vertical_motion = float(np.median(residual_y))
+        block_values = self._block_medians(residual_y, x0, y0, gray.shape)
         residual_magnitude = np.hypot(residual_x, residual_y)
         local_motion = float(np.percentile(residual_magnitude, 75))
         motion_metric = max(global_motion, local_motion)
@@ -142,6 +181,7 @@ class DenseOpticalFlowExtractor:
                 brightness=brightness,
                 frame_change=frame_change,
                 reason="ok" if valid else ",".join(reasons),
+                block_values=block_values,
             ),
             overlay,
         )

@@ -18,9 +18,9 @@ Open the **Baby Respiration** panel in the sidebar. The wizard walks you through
 2. **Camera** — paste your camera's RTSP URL (found in the camera app under RTSP/ONVIF/local streaming) and test the connection; a preview frame confirms you have the right camera. No camera handy? Enter `demo://breathing` to explore with a synthetic scene.
 3. **Breathing region** — press **Auto-detect breathing region**: the add-on watches ~30 seconds of video for periodic motion in the breathing band and suggests the region to measure. Keep the room still during the scan. You can always drag the box manually; keep it snug around the chest and tummy, away from crib rails and loose blankets.
 
-**Keep the box small.** The signal is the *median* motion of every pixel in the box, so a box dominated by static bedding averages the breathing away to nothing — a whole-bed box produces a Signal RMS an order of magnitude below the detection gate. Aim for the torso only (well under 25% of the image; the panel warns when you exceed that).
+**The box is a search area.** Inside it, the monitor scores small blocks for breathing-band rhythm every window and measures from the block that currently carries it — the dashboard shows that active sub-region as a dashed mint box. This means the box may be drawn generously to allow the baby to move during sleep; static bedding inside it does not dilute the signal.
 
-**Co-sleeping warning.** Never include another person in the box. If an adult shares the bed, the detector can report reassuring "breathing" from *their* motion regardless of the baby's state — a false sense of safety that is worse than no reading. Draw the box around the baby's torso only, and double-check where the auto-detect suggestion lands before accepting it.
+**Co-sleeping warning.** Precisely because the monitor locks onto the strongest breathing inside the box, it must **never** be able to include another person. A box reaching a co-sleeping adult can report reassuring "breathing" from *them* regardless of the baby's state — worse than no reading. Cover the area the baby can occupy, and nothing an adult can occupy.
 
 4. **Home Assistant** — choose how readings reach Home Assistant: the broker Home Assistant provides (default, zero setup), a **custom MQTT broker** running anywhere on your network (host, port, credentials), or no MQTT at all. The panel shows live connection status while you save.
 
@@ -93,7 +93,7 @@ condition:
 | `no_breath_timeout` | Seconds of missing signal (while calibrated and observable) before `NO_BREATHING_SIGNAL`. |
 | `presence_detection` | Pause monitoring when the crib is confirmed empty. Off = always treat the crib as occupied. |
 | `low_rate_threshold_bpm` | Flags `baby_breathing_rate_low` when the measured rate is below this (0 disables). Must exceed `min_bpm` — slower rates are unmeasurable and surface as signal loss instead. Small hysteresis (+2 BPM to clear) prevents flapping; add a `for:` duration in your automation. |
-| `minimum_signal_rms` | Band-passed motion amplitude (px RMS) required before the signal counts as observable. Camera-distance dependent: lower it if the panel shows a rhythmic waveform with good SNR but says "too faint to trust". |
+| `minimum_signal_rms` | Band-passed motion amplitude (px RMS) required before the signal counts as observable. A clearly concentrated spectral peak with strong SNR overrides this down to 30% of the value — unambiguous rhythm is not vetoed for being small. |
 | `mqtt_base_topic` / `mqtt_discovery_prefix` | Topic naming for power users. The broker itself is chosen in the panel's Home Assistant step. |
 
 The camera URL and measurement region are set in the panel, not in the options, and are stored in the add-on's private data.

@@ -23,7 +23,7 @@ from app.web import WebServer, WebState
 LOGGER = logging.getLogger(__name__)
 
 # Fields that only matter to the web UI; kept out of the MQTT state payload.
-_WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi", "roi_suggestion", "mqtt")
+_WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi", "roi_suggestion", "mqtt", "active_block")
 
 PROBE_PREVIEW_WIDTH = 640
 
@@ -393,6 +393,15 @@ class BabyRespirationService:
         reconnect_count: int,
     ) -> dict[str, Any]:
         bpm = estimate.bpm if classification.state == DetectorState.BREATHING else None
+        active_block = None
+        rects = self.extractor.block_rects
+        if (
+            estimate.selected_block is not None
+            and rects
+            and estimate.selected_block < len(rects)
+            and classification.state == DetectorState.BREATHING
+        ):
+            active_block = list(rects[estimate.selected_block])
         if not self.camera_configured:
             reason = "awaiting_camera_setup"
         elif stream_status != "connected":
@@ -424,6 +433,7 @@ class BabyRespirationService:
             "presence_reason": self.presence.reason,
             "roi": list(self._camera.roi),
             "roi_suggestion": self._roi_suggestion,
+            "active_block": active_block,
             "mqtt": {**self.mqtt.state(), "mode": self.settings.get().mqtt_mode},
             "scan": self.scanner.snapshot(),
             "waveform_t": estimate.waveform_t,

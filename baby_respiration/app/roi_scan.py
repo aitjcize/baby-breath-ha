@@ -26,6 +26,8 @@ MAXIMUM_EXCESSIVE_FRACTION = 0.3
 # Blocks whose overall motion std exceeds this (pixels) are dominated by
 # non-breathing movement (caregiver, pets, fans) and are excluded.
 MAXIMUM_BLOCK_MOTION_STD = 0.6
+# Generous clusters are fine: the estimator measures per-block inside the
+# suggested box, so extra area gives movement headroom without dilution.
 CLUSTER_SCORE_FRACTION = 0.35
 # White noise puts roughly the band's share of the spectrum (~0.5 here) into
 # the breathing band; genuine breathing concentrates well above that.
@@ -221,22 +223,25 @@ class BreathingRegionScanner:
         best_freq = float(peak_freqs[best])
         scores_grid = scores.reshape(blocks_y, blocks_x)
         freqs_grid = peak_freqs.reshape(blocks_y, blocks_x)
-        cluster = self._grow_cluster(scores_grid, freqs_grid, best, float(scores[best]), best_freq)
-
-        rows, cols = np.nonzero(cluster)
         pixel_h = blocks_y * self.block_size
         pixel_w = blocks_x * self.block_size
-        pad = 0.5
-        x0 = max(0.0, (cols.min() - pad) * self.block_size / pixel_w)
-        y0 = max(0.0, (rows.min() - pad) * self.block_size / pixel_h)
-        x1 = min(1.0, (cols.max() + 1 + pad) * self.block_size / pixel_w)
-        y1 = min(1.0, (rows.max() + 1 + pad) * self.block_size / pixel_h)
-        roi = normalize_roi(self._ensure_minimum_size((x0, y0, x1 - x0, y1 - y0)))
+
+        cluster = self._grow_cluster(scores_grid, freqs_grid, best, float(scores[best]), best_freq, CLUSTER_SCORE_FRACTION)
+        roi = normalize_roi(self._ensure_minimum_size(self._cluster_bbox(cluster, pixel_w, pixel_h)))
 
         max_score = float(scores_grid.max())
         heatmap = (scores_grid / max_score).round(3).tolist() if max_score > 0 else scores_grid.tolist()
         quality = float(np.clip(periodicity[best] * 100.0, 0.0, 100.0))
         return ScanResult(roi=roi, bpm=best_freq * 60.0, quality=quality, heatmap=heatmap)
+
+    def _cluster_bbox(self, cluster: np.ndarray, pixel_w: int, pixel_h: int) -> tuple[float, float, float, float]:
+        rows, cols = np.nonzero(cluster)
+        pad = 0.5
+        x0 = max(0.0, (cols.min() - pad) * self.block_size / pixel_w)
+        y0 = max(0.0, (rows.min() - pad) * self.block_size / pixel_h)
+        x1 = min(1.0, (cols.max() + 1 + pad) * self.block_size / pixel_w)
+        y1 = min(1.0, (rows.max() + 1 + pad) * self.block_size / pixel_h)
+        return (x0, y0, x1 - x0, y1 - y0)
 
     @staticmethod
     def _grow_cluster(
@@ -245,9 +250,10 @@ class BreathingRegionScanner:
         best_flat_index: int,
         best_score: float,
         best_freq: float,
+        score_fraction: float,
     ) -> np.ndarray:
         blocks_y, blocks_x = scores.shape
-        threshold = best_score * CLUSTER_SCORE_FRACTION
+        threshold = best_score * score_fraction
         tolerance = max(0.15 * best_freq, 0.05)
         eligible = (scores >= threshold) & (np.abs(freqs - best_freq) <= tolerance)
         cluster = np.zeros_like(eligible, dtype=bool)
