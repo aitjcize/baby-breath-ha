@@ -45,6 +45,7 @@ class RuntimeSettings:
     mqtt_port: int = 1883
     mqtt_username: str = ""
     mqtt_password: str = ""
+    monitoring_enabled: bool = True
 
 
 class SettingsStore:
@@ -98,6 +99,7 @@ class SettingsStore:
             mqtt_port=port,
             mqtt_username=str(raw.get("mqtt_username", "") or ""),
             mqtt_password=str(raw.get("mqtt_password", "") or ""),
+            monitoring_enabled=bool(raw.get("monitoring_enabled", True)),
         )
 
     def get(self) -> RuntimeSettings:
@@ -114,6 +116,7 @@ class SettingsStore:
         mqtt_port: int | None = None,
         mqtt_username: str | None = None,
         mqtt_password: str | None = None,
+        monitoring_enabled: bool | None = None,
     ) -> RuntimeSettings:
         """Merge the given fields into the stored settings and persist."""
         if mqtt_mode is not None and mqtt_mode not in MQTT_MODES:
@@ -136,6 +139,8 @@ class SettingsStore:
                 merged = replace(merged, mqtt_username=mqtt_username)
             if mqtt_password is not None:
                 merged = replace(merged, mqtt_password=mqtt_password)
+            if monitoring_enabled is not None:
+                merged = replace(merged, monitoring_enabled=bool(monitoring_enabled))
             self._settings = merged
             self._persist(merged)
             return merged
@@ -148,6 +153,7 @@ class SettingsStore:
             "mqtt_port": settings.mqtt_port,
             "mqtt_username": settings.mqtt_username,
             "mqtt_password": settings.mqtt_password,
+            "monitoring_enabled": settings.monitoring_enabled,
         }
         if settings.roi is not None:
             payload["roi"] = list(settings.roi)

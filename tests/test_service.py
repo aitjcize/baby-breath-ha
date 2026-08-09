@@ -63,6 +63,27 @@ def test_mqtt_settings_resolve_effective_broker(tmp_path: Path) -> None:
     assert service._effective_mqtt() == service.config.mqtt
 
 
+def test_monitoring_pause_and_resume(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.settings.update(monitoring_enabled=False)
+    service = BabyRespirationService(
+        AppConfig(mqtt=MQTTConfig(enabled=False), debug=DebugConfig(enabled=False)),
+        settings_store=service.settings,
+    )
+    published: list[dict] = []
+    service.mqtt.publish = published.append  # type: ignore[method-assign]
+    thread = threading.Thread(target=service.run, kwargs={"run_seconds": 3.0})
+    thread.start()
+    time.sleep(1.2)
+    service.apply_settings(monitoring=True)  # resume mid-run via the API path
+    thread.join(timeout=15)
+    assert not thread.is_alive()
+
+    assert any(p.get("state") == "MONITORING_OFF" and p.get("monitoring") is False for p in published)
+    assert service.latest_status["monitoring"] is True  # resumed and processing
+    assert SettingsStore(tmp_path).get().monitoring_enabled is True
+
+
 def test_rate_low_flag_with_hysteresis(tmp_path: Path) -> None:
     service = make_service(tmp_path)  # default threshold 20
     assert service._update_rate_low(24.0) is False

@@ -34,6 +34,7 @@ Settings persist across restarts and updates. Use **Edit region**, **Camera**, o
 | `NO_BREATHING_SIGNAL` | A previously calibrated, still-observable region has lost periodic motion for the configured timeout — **and the baby is confirmed present**. It means only that *this detector sees no signal*. |
 | `MEASUREMENT_INVALID` | The stream, image quality, motion stability, or signal strength is insufficient to say anything. |
 | `CRIB_EMPTY` | Presence detection confirmed the crib is empty; monitoring is paused and resumes automatically. |
+| `MONITORING_OFF` | Monitoring switched off (panel button or `switch.baby_monitoring`); analysis is skipped and entities are unavailable. |
 
 Low signal-to-noise, a frozen stream, excess movement, and startup without calibration all fail toward `MEASUREMENT_INVALID`. While invalid, the rate and breathing entities are marked *unavailable* rather than reporting zero BPM or `OFF`.
 
@@ -57,6 +58,7 @@ A single device is created with:
 - `binary_sensor.baby_breathing_detected`
 - `binary_sensor.baby_respiration_measurement_valid`
 - `binary_sensor.baby_breathing_rate_low` — on while the measured rate sits below your configured threshold (device class *problem*; unavailable while not measuring)
+- `switch.baby_monitoring` — turn analysis on/off (e.g. schedule it for sleep times); while off, CPU drops to near zero, no alerts can fire, and measurement entities are unavailable
 - `sensor.baby_presence` — `PRESENT` / `ABSENT` / `CHECKING` / `UNKNOWN`
 - `binary_sensor.baby_in_crib` — occupancy; *unavailable* while presence is undecided
 - Diagnostics: detector state, signal RMS, SNR, video FPS, analysis window, stream status, reason, and excessive motion.
@@ -83,11 +85,24 @@ condition:
         for: "00:00:30"
 ```
 
+## Scheduling monitoring
+
+Monitoring only makes sense while the baby is asleep. Automate `switch.baby_monitoring` — e.g. on at bedtime, off in the morning:
+
+```yaml
+- alias: Baby monitor on at bedtime
+  trigger: [{platform: time, at: "19:30:00"}]
+  action: [{service: switch.turn_on, target: {entity_id: switch.baby_monitoring}}]
+```
+
+While off, the panel still shows live video, and re-enabling starts a fresh calibration.
+
 ## Options
 
 | Option | Purpose |
 | --- | --- |
-| `processing_fps` | Analyzed frames per second. 5 is enough up to 120 BPM. |
+| `processing_fps` | Analyzed frames per second; CPU scales linearly. 4 suffices for the default 90 BPM band; keep it above 2× `max_bpm` in Hz. |
+| `target_processing_width` | Analysis resolution; CPU scales with its square (320→256 ≈ −36%). Lower widths shrink measured amplitudes proportionally. |
 | `min_bpm` / `max_bpm` | The breathing band. Newborns commonly breathe 30–60 BPM. |
 | `minimum_confidence` | Quality score required before motion counts as breathing. |
 | `no_breath_timeout` | Seconds of missing signal (while calibrated and observable) before `NO_BREATHING_SIGNAL`. |

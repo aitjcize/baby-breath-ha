@@ -260,6 +260,7 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
             <button class="btn-ghost" id="redetect">Edit region</button>
             <button class="btn-ghost" id="editCam">Camera</button>
             <button class="btn-ghost" id="editMqtt">MQTT</button>
+            <button class="btn-ghost" id="monitorBtn">Pause monitoring</button>
           </div>
           <p class="hint mono" id="roiLbl" style="margin:12px 2px 0"></p>
           <p class="msg" id="suggestHint" hidden style="margin:10px 0 0;font-size:13.5px"></p>
@@ -305,6 +306,7 @@ const REASONS={
   observable_periodic_respiration_signal_absent_after_timeout:"Video is clear but shows no breathing rhythm — check your baby directly",
   roi_changed_recalibrating:"Region changed — recalibrating",
   motion_extraction_error:"Video processing error",
+  monitoring_disabled:"Turn monitoring on when your baby is asleep — here or with the Home Assistant switch.",
 };
 const prettyReason=r=>{if(!r)return"";if(r.startsWith("respiration_signal_missing_pending_timeout"))return"Signal faded — confirming…";return REASONS[r]||r.replace(/_/g," ")};
 
@@ -379,6 +381,7 @@ $("saveRegion").addEventListener("click",async()=>{
 });
 $("redetect").addEventListener("click",()=>{forced="region";setView("wizard",3)});
 $("editMqtt").addEventListener("click",()=>{forced="mqtt";setView("wizard",4)});
+$("monitorBtn").addEventListener("click",()=>{if(!status)return;post("api/settings",{monitoring:status.monitoring===false}).catch(()=>{})});
 $("backTo3").addEventListener("click",()=>setStep(3));
 $("skipMqtt").addEventListener("click",()=>{forced=null;setView("dashboard")});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -419,6 +422,7 @@ const STATES={
   MEASUREMENT_INVALID:{cls:"pill warn",lbl:"Measurement unavailable",hero:"still"},
   NO_BREATHING_SIGNAL:{cls:"pill alert",lbl:"No breathing signal — check now",hero:"alert"},
   CRIB_EMPTY:{cls:"pill",lbl:"Crib empty — monitoring paused",hero:"still"},
+  MONITORING_OFF:{cls:"pill",lbl:"Monitoring off",hero:"still"},
 };
 function renderDash(){
   const s=status,st=STATES[s.state]||STATES.MEASUREMENT_INVALID;
@@ -432,8 +436,10 @@ function renderDash(){
   if(bpm)document.documentElement.style.setProperty("--breath-period",Math.min(4,Math.max(1,60/bpm))+"s");
   let why=s.state==="BREATHING"?(s.rate_low?`Slower than your ${Math.round(s.low_rate_threshold)} BPM alert threshold`:""):prettyReason(s.reason);
   if(s.state==="CRIB_EMPTY")why="Monitoring resumes automatically when your baby is back.";
+  else if(s.state==="MONITORING_OFF")why=prettyReason("monitoring_disabled");
   else if(s.scan&&s.scan.state==="running"&&s.scan.purpose==="presence")why="Checking whether the crib is occupied…";
   $("why").textContent=why;
+  $("monitorBtn").textContent=s.monitoring===false?"Resume monitoring":"Pause monitoring";
   const conf=Math.round(s.confidence||0);$("confFill").style.width=conf+"%";$("confPct").textContent=conf;
   $("roiLbl").textContent="region "+ (s.roi||[]).map(v=>Number(v).toFixed(2)).join(", ");
   const hint=$("suggestHint");

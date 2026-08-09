@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.8
+
+- New `switch.baby_monitoring` (MQTT-controllable) plus a panel button: turn analysis on only while the baby is asleep. While off, optical flow is skipped entirely (near-zero CPU), no alerts can fire, measurement/presence entities go unavailable, the state shows `MONITORING_OFF`, and live video stays in the panel. Re-enabling starts a fresh calibration. The choice persists across restarts.
+- CPU tuning: `processing_fps` may now go down to 4 (safe with the default 90 BPM band — Nyquist keeps a 33% margin, and per-frame displacement actually grows), and `target_processing_width` is exposed as an option (CPU scales with its square; 320→256 saves ~36%). Both together roughly halve analysis CPU.
+
 ## 0.3.7
 
 - The waveform no longer disguises noise as signal: it shows its real amplitude range in pixels (flagging "noise floor" below 0.004 px) and the trace dims to gray whenever breathing is not actually detected. Auto-scaling previously made a 0.0005 px empty-bed noise floor fill the plot exactly like genuine 0.01+ px breathing.

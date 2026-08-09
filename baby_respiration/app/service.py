@@ -36,6 +36,7 @@ class BabyRespirationService:
         self.settings = settings_store if settings_store is not None else SettingsStore()
         stored = self.settings.get()
         self._camera = self._effective_camera(config.camera, stored.rtsp_url, stored.roi)
+        self._monitoring = stored.monitoring_enabled
         self.source = self._build_source(self._camera.rtsp_url)
         self.extractor = DenseOpticalFlowExtractor(self._camera, config.signal)
         self.estimator = RespirationEstimator(self._camera, config.signal)
@@ -44,7 +45,7 @@ class BabyRespirationService:
         self.presence = PresenceTracker(enabled=config.signal.presence_enabled)
         self._handled_scan_id = 0
         self._roi_suggestion: dict[str, Any] | None = None
-        self.mqtt = MQTTPublisher(self._effective_mqtt())
+        self.mqtt = MQTTPublisher(self._effective_mqtt(), on_monitoring_command=self._on_monitoring_command)
         self.web_state = WebState(self._camera.roi)
         self.web_server: WebServer | None = None
         self.latest_status: dict[str, Any] = {}
@@ -162,7 +163,7 @@ class BabyRespirationService:
         with self._preview_lock:
             return self._probe_preview
 
-    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None, mqtt: dict[str, Any] | None = None) -> dict[str, Any]:
+    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None, mqtt: dict[str, Any] | None = None, monitoring: bool | None = None) -> dict[str, Any]:
         """Persist wizard-entered settings and queue them for the main loop."""
         update: dict[str, Any] = {}
         if rtsp_url is not None:
@@ -176,6 +177,8 @@ class BabyRespirationService:
                     "the breathing signal and may capture a co-sleeping adult",
                     area * 100,
                 )
+        if monitoring is not None:
+            update["monitoring_enabled"] = bool(monitoring)
         if mqtt is not None:
             if not isinstance(mqtt, dict):
                 raise ValueError("mqtt must be an object")
@@ -195,6 +198,13 @@ class BabyRespirationService:
             "rtsp_url_configured": bool(update.get("rtsp_url", self._camera.rtsp_url)),
             "roi": list(update.get("roi", self._camera.roi)),
         }
+
+    def _on_monitoring_command(self, enabled: bool) -> None:
+        LOGGER.info("monitoring %s via MQTT command", "enabled" if enabled else "disabled")
+        try:
+            self.apply_settings(monitoring=enabled)
+        except ValueError as exc:
+            LOGGER.warning("could not apply monitoring command: %s", exc)
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -223,6 +233,26 @@ class BabyRespirationService:
                 self._apply_pending()
                 snapshot = self.source.snapshot()
                 observation_added = False
+
+                if not self._monitoring:
+                    if now - last_publish >= 1.0:
+                        if snapshot.frame is not None and snapshot.sequence != self._last_sequence:
+                            self._last_sequence = snapshot.sequence
+                            display, _ = self.extractor._prepare(snapshot.frame)
+                            self._latest_overlay = display
+                        status = self._make_off_status(snapshot.status, snapshot.reconnect_count)
+                        jpeg = self._encode_overlay(self._latest_overlay, status)
+                        self.latest_status = status
+                        self.web_state.update(status, jpeg)
+                        self.mqtt.publish({key: value for key, value in status.items() if key not in _WEB_ONLY_STATUS_FIELDS})
+                        last_publish = now
+                    next_tick += interval
+                    delay = next_tick - time.monotonic()
+                    if delay > 0:
+                        self._stop_event.wait(delay)
+                    else:
+                        next_tick = time.monotonic()
+                    continue
 
                 if snapshot.frame is not None and snapshot.timestamp is not None and snapshot.sequence != self._last_sequence:
                     self._last_sequence = snapshot.sequence
@@ -320,12 +350,24 @@ class BabyRespirationService:
             pending, self._pending = self._pending, {}
         if not pending:
             return
+        if "monitoring_enabled" in pending:
+            enabled = bool(pending["monitoring_enabled"])
+            if enabled != self._monitoring:
+                self._monitoring = enabled
+                LOGGER.info("monitoring %s", "enabled" if enabled else "paused")
+                self.scanner.cancel()
+                self.extractor.reset()
+                self.estimator.clear()
+                self.classifier.reset()
+                self.presence.reset()
+                self._roi_suggestion = None
+                self._rate_low = False
         if any(key.startswith("mqtt_") for key in pending):
             new_config = self._effective_mqtt()
             if new_config != self.mqtt.config:
                 LOGGER.info("applying new MQTT settings (enabled=%s host=%s)", new_config.enabled, new_config.host)
                 self.mqtt.stop()
-                self.mqtt = MQTTPublisher(new_config)
+                self.mqtt = MQTTPublisher(new_config, on_monitoring_command=self._on_monitoring_command)
                 self.mqtt.start()
         new_url = self._clean_url(pending.get("rtsp_url", self._camera.rtsp_url))
         new_roi = tuple(pending.get("roi", self._camera.roi))
@@ -420,6 +462,7 @@ class BabyRespirationService:
             "data_completeness": round(estimate.data_completeness, 3),
             "camera_configured": self.camera_configured,
             "version": __version__,
+            "monitoring": True,
             "presence": self.presence.state.value,
             "presence_reason": self.presence.reason,
             "roi": list(self._camera.roi),
@@ -429,6 +472,40 @@ class BabyRespirationService:
             "scan": self.scanner.snapshot(),
             "waveform_t": estimate.waveform_t,
             "waveform_y": estimate.waveform_y,
+        }
+
+    def _make_off_status(self, stream_status: str, reconnect_count: int) -> dict[str, Any]:
+        return {
+            "state": "MONITORING_OFF",
+            "bpm": None,
+            "rate_low": False,
+            "low_rate_threshold": self.config.signal.low_rate_threshold_bpm,
+            "confidence": 0.0,
+            "measurement_valid": False,
+            "breathing_detected": None,
+            "calibrated": False,
+            "reason": "monitoring_disabled",
+            "stream_status": stream_status,
+            "reconnect_count": reconnect_count,
+            "excessive_motion": False,
+            "signal_rms": 0.0,
+            "snr_db": None,
+            "peak_concentration": 0.0,
+            "estimated_fps": 0.0,
+            "window_seconds": 0.0,
+            "data_completeness": 0.0,
+            "camera_configured": self.camera_configured,
+            "version": __version__,
+            "monitoring": False,
+            "presence": "UNKNOWN",
+            "presence_reason": "monitoring_disabled",
+            "roi": list(self._camera.roi),
+            "roi_suggestion": None,
+            "active_block": None,
+            "mqtt": {**self.mqtt.state(), "mode": self.settings.get().mqtt_mode},
+            "scan": self.scanner.snapshot(),
+            "waveform_t": [],
+            "waveform_y": [],
         }
 
     @staticmethod

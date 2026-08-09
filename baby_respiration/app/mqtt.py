@@ -61,6 +61,18 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
     valid.update({"value_template": "{{ 'ON' if value_json.measurement_valid else 'OFF' }}", "payload_on": "ON", "payload_off": "OFF", "entity_category": "diagnostic", "icon": "mdi:check-decagram-outline"})
     entities.append(("binary_sensor", "baby_respiration_measurement_valid", valid))
 
+    monitoring = common("Monitoring", "baby_monitoring")
+    monitoring.update({
+        "command_topic": f"{base}/monitoring/set",
+        "value_template": "{{ 'ON' if value_json.monitoring else 'OFF' }}",
+        "state_on": "ON",
+        "state_off": "OFF",
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "icon": "mdi:monitor-eye",
+    })
+    entities.append(("switch", "baby_monitoring", monitoring))
+
     rate_low = common("Breathing rate low", "baby_breathing_rate_low", measurement_availability)
     rate_low.update({
         "value_template": "{{ 'ON' if value_json.rate_low else 'OFF' }}",
@@ -109,11 +121,12 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
 
 
 class MQTTPublisher:
-    def __init__(self, config: MQTTConfig) -> None:
+    def __init__(self, config: MQTTConfig, on_monitoring_command=None) -> None:
         self.config = config
         self._connected = False
         self._client: mqtt.Client | None = None
         self._last_error: str | None = None
+        self._on_monitoring_command = on_monitoring_command
 
     @property
     def connected(self) -> bool:
@@ -141,6 +154,7 @@ class MQTTPublisher:
         client.will_set(f"{self.config.base_topic}/availability", "offline", qos=1, retain=True)
         client.on_connect = self._on_connect
         client.on_disconnect = self._on_disconnect
+        client.on_message = self._on_message
         self._client = client
         try:
             client.connect_async(self.config.host, self.config.port, keepalive=30)
@@ -159,8 +173,21 @@ class MQTTPublisher:
         self._last_error = None
         LOGGER.info("MQTT connected")
         client.publish(f"{self.config.base_topic}/availability", "online", qos=1, retain=True)
+        client.subscribe(f"{self.config.base_topic}/monitoring/set", qos=1)
         for topic, payload in build_discovery_payloads(self.config).items():
             client.publish(topic, json.dumps(payload, separators=(",", ":")), qos=1, retain=True)
+
+    def _on_message(self, client: mqtt.Client, userdata: Any, message: mqtt.MQTTMessage) -> None:
+        del client, userdata
+        if message.topic != f"{self.config.base_topic}/monitoring/set" or self._on_monitoring_command is None:
+            return
+        payload = message.payload.decode("utf-8", "ignore").strip().upper()
+        if payload in ("ON", "TRUE", "1"):
+            self._on_monitoring_command(True)
+        elif payload in ("OFF", "FALSE", "0"):
+            self._on_monitoring_command(False)
+        else:
+            LOGGER.warning("ignoring unknown monitoring command payload: %r", payload)
 
     def _on_disconnect(self, client: mqtt.Client, userdata: Any, flags: Any, reason_code: Any, properties: Any) -> None:
         del client, userdata, flags, properties

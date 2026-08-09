@@ -39,6 +39,13 @@ def test_mqtt_settings_roundtrip(tmp_path: Path) -> None:
         store.update(mqtt_port=0)
 
 
+def test_monitoring_toggle_roundtrip(tmp_path: Path) -> None:
+    store = SettingsStore(tmp_path)
+    assert store.get().monitoring_enabled is True
+    store.update(monitoring_enabled=False)
+    assert SettingsStore(tmp_path).get().monitoring_enabled is False
+
+
 def test_corrupt_or_invalid_content_starts_unconfigured(tmp_path: Path) -> None:
     (tmp_path / "settings.json").write_text("{not json", encoding="utf-8")
     assert SettingsStore(tmp_path).get().rtsp_url == ""

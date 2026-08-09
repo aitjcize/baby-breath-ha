@@ -4,7 +4,10 @@ configuration:
     description: Verbosity of the add-on log.
   processing_fps:
     name: Processing frame rate
-    description: Frames per second analyzed for motion. 5 is enough for breathing rates up to 120 BPM; higher values cost CPU.
+    description: Frames per second analyzed for motion; CPU scales linearly with it. 4 is enough for the default 90 BPM band (needs to stay above twice the maximum breathing rate in Hz); use 5+ if you raise max_bpm.
+  target_processing_width:
+    name: Processing width
+    description: Video is downscaled to this width before analysis; CPU scales with its square (320 -> 256 saves about a third). Lower widths also shrink the measured motion amplitudes.
   min_bpm:
     name: Minimum breathing rate
     description: Lower bound of the breathing band in breaths per minute.

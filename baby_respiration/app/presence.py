@@ -62,6 +62,17 @@ class PresenceTracker:
         self._checking_since: float | None = None
         self._breathing_since: float | None = None
 
+    def reset(self) -> None:
+        """Back to startup state (used when monitoring is toggled)."""
+        self._state = PresenceState.UNKNOWN
+        self._reason = "monitoring_toggled"
+        self._disturbance_start = None
+        self._last_excessive = None
+        self._failed_scans = 0
+        self._scan_wanted = False
+        self._checking_since = None
+        self._breathing_since = None
+
     # ------------------------------------------------------------------ input
 
     def observe(self, now: float, excessive: bool) -> None:

@@ -27,3 +27,21 @@ def test_discovery_payloads_are_valid_and_include_required_entities() -> None:
     breathing = next(payload for payload in payloads.values() if payload["object_id"] == "baby_breathing_detected")
     assert breathing["availability_topic"] == "baby_respiration/measurement_availability"
 
+    switch = next(payload for payload in payloads.values() if payload["object_id"] == "baby_monitoring")
+    assert switch["command_topic"] == "baby_respiration/monitoring/set"
+
+
+def test_monitoring_command_parsing() -> None:
+    from types import SimpleNamespace
+
+    from app.mqtt import MQTTPublisher
+
+    received = []
+    publisher = MQTTPublisher(MQTTConfig(), on_monitoring_command=received.append)
+    topic = "baby_respiration/monitoring/set"
+    publisher._on_message(None, None, SimpleNamespace(topic=topic, payload=b"ON"))
+    publisher._on_message(None, None, SimpleNamespace(topic=topic, payload=b"off"))
+    publisher._on_message(None, None, SimpleNamespace(topic=topic, payload=b"garbage"))
+    publisher._on_message(None, None, SimpleNamespace(topic="other/topic", payload=b"ON"))
+    assert received == [True, False]
+
