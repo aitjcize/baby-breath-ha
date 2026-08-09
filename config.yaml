@@ -23,6 +23,7 @@ signal:
   measurement_invalid_timeout: 8
   excessive_motion_threshold: 1.5
   minimum_signal_rms: 0.001
+  low_rate_threshold_bpm: 20
   minimum_snr_db: 3
   minimum_image_contrast: 3.0
   minimum_sharpness: 1.0

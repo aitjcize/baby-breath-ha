@@ -63,6 +63,15 @@ def test_mqtt_settings_resolve_effective_broker(tmp_path: Path) -> None:
     assert service._effective_mqtt() == service.config.mqtt
 
 
+def test_rate_low_flag_with_hysteresis(tmp_path: Path) -> None:
+    service = make_service(tmp_path)  # default threshold 20
+    assert service._update_rate_low(24.0) is False
+    assert service._update_rate_low(19.5) is True
+    assert service._update_rate_low(21.0) is True   # inside hysteresis band
+    assert service._update_rate_low(22.5) is False  # cleared at threshold + 2
+    assert service._update_rate_low(None) is False
+
+
 def test_probe_demo_and_unconfigured(tmp_path: Path) -> None:
     service = make_service(tmp_path)
     result = service.probe("demo://breathing")

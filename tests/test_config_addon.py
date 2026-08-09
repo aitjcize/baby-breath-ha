@@ -49,3 +49,9 @@ def test_tuning_options_are_applied(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert config.signal.max_bpm == 80
     assert config.camera.processing_fps == 8
     assert config.signal.no_breath_timeout == 30
+
+
+def test_low_rate_threshold_option(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BABY_MQTT_HOST", raising=False)
+    config = load_addon_config(write_options(tmp_path, low_rate_threshold_bpm=25))
+    assert config.signal.low_rate_threshold_bpm == 25

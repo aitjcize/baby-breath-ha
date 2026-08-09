@@ -56,6 +56,7 @@ A single device is created with:
 - `sensor.baby_respiration_confidence` — signal quality 0–100 (**not** a medical probability)
 - `binary_sensor.baby_breathing_detected`
 - `binary_sensor.baby_respiration_measurement_valid`
+- `binary_sensor.baby_breathing_rate_low` — on while the measured rate sits below your configured threshold (device class *problem*; unavailable while not measuring)
 - `sensor.baby_presence` — `PRESENT` / `ABSENT` / `CHECKING` / `UNKNOWN`
 - `binary_sensor.baby_in_crib` — occupancy; *unavailable* while presence is undecided
 - Diagnostics: detector state, signal RMS, SNR, video FPS, analysis window, stream status, reason, and excessive motion.
@@ -76,6 +77,10 @@ condition:
         entity_id: binary_sensor.baby_respiration_measurement_valid
         state: "off"
         for: "00:05:00"
+      - condition: state           # measured rate below your threshold
+        entity_id: binary_sensor.baby_breathing_rate_low
+        state: "on"
+        for: "00:00:30"
 ```
 
 ## Options
@@ -87,6 +92,7 @@ condition:
 | `minimum_confidence` | Quality score required before motion counts as breathing. |
 | `no_breath_timeout` | Seconds of missing signal (while calibrated and observable) before `NO_BREATHING_SIGNAL`. |
 | `presence_detection` | Pause monitoring when the crib is confirmed empty. Off = always treat the crib as occupied. |
+| `low_rate_threshold_bpm` | Flags `baby_breathing_rate_low` when the measured rate is below this (0 disables). Must exceed `min_bpm` — slower rates are unmeasurable and surface as signal loss instead. Small hysteresis (+2 BPM to clear) prevents flapping; add a `for:` duration in your automation. |
 | `minimum_signal_rms` | Band-passed motion amplitude (px RMS) required before the signal counts as observable. Camera-distance dependent: lower it if the panel shows a rhythmic waveform with good SNR but says "too faint to trust". |
 | `mqtt_base_topic` / `mqtt_discovery_prefix` | Topic naming for power users. The broker itself is chosen in the panel's Home Assistant step. |
 

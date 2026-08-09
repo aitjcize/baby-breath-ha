@@ -44,6 +44,9 @@ class SignalConfig:
     maximum_interpolation_gap: float = 1.0
     baseline_required_duration: float = 10.0
     presence_enabled: bool = True
+    # Flag (not alarm) when a measured rate sits below this; 0 disables.
+    # Rates below min_bpm are unmeasurable and surface as signal loss instead.
+    low_rate_threshold_bpm: float = 20.0
 
 
 @dataclass(frozen=True)
@@ -143,6 +146,7 @@ def load_addon_config(options_path: str | Path = ADDON_OPTIONS_PATH) -> AppConfi
         minimum_confidence=float(raw.get("minimum_confidence", 55)),
         no_breath_timeout=float(raw.get("no_breath_timeout", 12)),
         minimum_signal_rms=float(raw.get("minimum_signal_rms", 0.001)),
+        low_rate_threshold_bpm=float(raw.get("low_rate_threshold_bpm", 20)),
         presence_enabled=bool(raw.get("presence_detection", True)),
     )
     config = AppConfig(
@@ -202,6 +206,8 @@ def validate_config(config: AppConfig) -> None:
         raise ValueError("minimum confidence must be between 0 and 100")
     if config.signal.minimum_snr_db < 0:
         raise ValueError("minimum SNR must be non-negative")
+    if config.signal.low_rate_threshold_bpm >= config.signal.max_bpm:
+        raise ValueError("low_rate_threshold_bpm must be below max_bpm (0 disables)")
     if not 1 <= config.mqtt.port <= 65535:
         raise ValueError("mqtt.port is invalid")
     if not 1 <= config.debug.port <= 65535:

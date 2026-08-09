@@ -14,6 +14,9 @@ def test_discovery_payloads_are_valid_and_include_required_entities() -> None:
         "baby_respiration_confidence",
         "baby_breathing_detected",
         "baby_respiration_measurement_valid",
+        "baby_breathing_rate_low",
+        "baby_presence",
+        "baby_in_crib",
     }
     object_ids = {payload["object_id"] for payload in payloads.values()}
     assert required <= object_ids

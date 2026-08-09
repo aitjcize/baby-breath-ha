@@ -61,6 +61,16 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
     valid.update({"value_template": "{{ 'ON' if value_json.measurement_valid else 'OFF' }}", "payload_on": "ON", "payload_off": "OFF", "entity_category": "diagnostic", "icon": "mdi:check-decagram-outline"})
     entities.append(("binary_sensor", "baby_respiration_measurement_valid", valid))
 
+    rate_low = common("Breathing rate low", "baby_breathing_rate_low", measurement_availability)
+    rate_low.update({
+        "value_template": "{{ 'ON' if value_json.rate_low else 'OFF' }}",
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "device_class": "problem",
+        "icon": "mdi:speedometer-slow",
+    })
+    entities.append(("binary_sensor", "baby_breathing_rate_low", rate_low))
+
     presence = common("Baby presence", "baby_presence")
     presence.update({"value_template": "{{ value_json.presence }}", "icon": "mdi:crib"})
     entities.append(("sensor", "baby_presence", presence))

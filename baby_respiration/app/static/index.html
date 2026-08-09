@@ -130,7 +130,7 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
 .wavecard{margin-top:18px;padding:18px 18px 10px}
 .wavecard h2{font-size:15px;color:var(--ink-dim);font-weight:600}
 #wave{width:100%;height:150px;display:block}
-.camcard .actions{margin-top:14px;justify-content:space-between}
+.camcard .actions{margin-top:14px}
 .diag{margin-top:18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px}
 .stat{background:var(--panel-deep);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px}
 .stat b{display:block;font:600 11px var(--font-body);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:4px}
@@ -269,13 +269,11 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
             <div class="veil" id="dashVeil">Waiting for camera…</div>
           </div>
           <div class="actions">
-            <span>
-              <button class="btn-ghost" id="redetect">Re-detect region</button>
-              <button class="btn-quiet" id="editCam">Camera…</button>
-              <button class="btn-quiet" id="editMqtt">MQTT…</button>
-            </span>
-            <span class="hint mono" id="roiLbl"></span>
+            <button class="btn-ghost" id="redetect">Re-detect region</button>
+            <button class="btn-ghost" id="editCam">Camera</button>
+            <button class="btn-ghost" id="editMqtt">MQTT</button>
           </div>
+          <p class="hint mono" id="roiLbl" style="margin:12px 2px 0"></p>
           <p class="msg" id="suggestHint" hidden style="margin:10px 0 0;font-size:13.5px"></p>
           <p id="roiWarn" hidden style="margin:10px 0 0;font-size:13.5px;color:var(--amber)"></p>
         </div>
@@ -470,7 +468,7 @@ function renderDash(){
   const bpm=s.bpm!=null?Math.round(s.bpm):null;
   $("bpm").textContent=bpm!=null?bpm:"—";
   if(bpm)document.documentElement.style.setProperty("--breath-period",Math.min(4,Math.max(1,60/bpm))+"s");
-  let why=s.state==="BREATHING"?"":prettyReason(s.reason);
+  let why=s.state==="BREATHING"?(s.rate_low?`Slower than your ${Math.round(s.low_rate_threshold)} BPM alert threshold`:""):prettyReason(s.reason);
   if(s.state==="CRIB_EMPTY")why="Monitoring resumes automatically when your baby is back.";
   else if(s.scan&&s.scan.state==="running"&&s.scan.purpose==="presence")why="Checking whether the crib is occupied…";
   $("why").textContent=why;

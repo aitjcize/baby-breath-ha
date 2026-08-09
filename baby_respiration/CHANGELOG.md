@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.3
+
+- New `binary_sensor.baby_breathing_rate_low` (device class *problem*): turns on while the measured rate sits below the configurable `low_rate_threshold_bpm` option (default 20, 0 disables), with a +2 BPM clear hysteresis. Build notifications on it in Home Assistant with a `for:` duration. Rates below `min_bpm` remain unmeasurable by design and surface as signal loss / `NO_BREATHING_SIGNAL` instead.
+- Dashboard: shows "slower than your threshold" under the rate while flagged; camera-card buttons cleaned up (consistent styling, region readout on its own line).
+
 ## 0.3.2
 
 Stability fixes from overnight real-camera use, plus broker choice in the panel:

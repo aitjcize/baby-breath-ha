@@ -56,6 +56,15 @@ class BabyRespirationService:
         self._preview_lock = threading.Lock()
         self._last_sequence = -1
         self._latest_overlay = None
+        self._rate_low = False
+        threshold = config.signal.low_rate_threshold_bpm
+        if 0 < threshold <= config.signal.min_bpm:
+            LOGGER.warning(
+                "low_rate_threshold_bpm (%.0f) is at or below min_bpm (%.0f); rates that low are "
+                "unmeasurable, so the low-rate flag will never trigger",
+                threshold,
+                config.signal.min_bpm,
+            )
 
     # ------------------------------------------------------------------ setup
 
@@ -365,6 +374,17 @@ class BabyRespirationService:
             reason=reason,
         )
 
+    def _update_rate_low(self, bpm: float | None) -> bool:
+        """Low-rate flag with hysteresis: on below threshold, off at +2 BPM."""
+        threshold = self.config.signal.low_rate_threshold_bpm
+        if bpm is None or threshold <= 0:
+            self._rate_low = False
+        elif self._rate_low:
+            self._rate_low = bpm < threshold + 2.0
+        else:
+            self._rate_low = bpm < threshold
+        return self._rate_low
+
     def _make_status(
         self,
         estimate: RespirationEstimate,
@@ -382,6 +402,8 @@ class BabyRespirationService:
         return {
             "state": classification.state.value,
             "bpm": bpm,
+            "rate_low": self._update_rate_low(bpm),
+            "low_rate_threshold": self.config.signal.low_rate_threshold_bpm,
             "confidence": estimate.confidence,
             "measurement_valid": classification.measurement_valid,
             "breathing_detected": classification.breathing_detected,

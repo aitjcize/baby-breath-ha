@@ -23,6 +23,9 @@ configuration:
   minimum_signal_rms:
     name: Minimum signal amplitude
     description: Band-passed motion amplitude (pixels RMS) required before the signal counts as observable. Camera-distance dependent - lower it if a genuine breathing waveform with good SNR is rejected as too faint.
+  low_rate_threshold_bpm:
+    name: Low breathing-rate threshold
+    description: Turns on binary_sensor.baby_breathing_rate_low when the measured rate sits below this (breaths/min). Must be above the minimum breathing rate to ever trigger; 0 disables. Build your own notification on the sensor in Home Assistant.
   mqtt_base_topic:
     name: MQTT base topic
     description: Topic prefix for state and availability messages.
