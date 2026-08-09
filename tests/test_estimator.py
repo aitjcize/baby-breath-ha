@@ -64,27 +64,23 @@ def test_hysteresis_holds_marginal_signal() -> None:
     estimator = RespirationEstimator(camera, config)
 
     # Locked: dips within the hysteresis margin stay on.
-    assert estimator._apply_gates(rms=0.002, snr_db=5.0, confidence=60.0, concentration=0.3, was_breathing=False) == (True, True)
-    assert estimator._apply_gates(rms=0.0008, snr_db=2.0, confidence=49.0, concentration=0.3, was_breathing=True) == (True, True)
+    assert estimator._apply_gates(rms=0.002, snr_db=5.0, confidence=60.0, was_breathing=False) == (True, True)
+    assert estimator._apply_gates(rms=0.0008, snr_db=2.0, confidence=49.0, was_breathing=True) == (True, True)
     # The same marginal values from cold do not lock on.
-    assert estimator._apply_gates(rms=0.0008, snr_db=2.0, confidence=49.0, concentration=0.3, was_breathing=False) == (False, False)
+    assert estimator._apply_gates(rms=0.0008, snr_db=2.0, confidence=49.0, was_breathing=False) == (False, False)
     # Dips beyond the margin release even a held lock.
-    assert estimator._apply_gates(rms=0.002, snr_db=1.0, confidence=49.0, concentration=0.3, was_breathing=True) == (False, False)
+    assert estimator._apply_gates(rms=0.002, snr_db=1.0, confidence=49.0, was_breathing=True) == (False, False)
 
 
-def test_clear_spectral_pattern_overrides_amplitude_floor() -> None:
-    """Unambiguous rhythm (high SNR + concentrated peak) is not vetoed for size."""
+def test_amplitude_floor_holds_regardless_of_spectral_confidence() -> None:
+    """24 s noise spectra fluke concentrated peaks; spectral evidence alone
+    must not waive the noise floor (empty-bed lesson)."""
     camera = CameraConfig(processing_fps=5.0)
     config = SignalConfig(minimum_snr_db=3.0, minimum_confidence=55.0, minimum_signal_rms=0.001)
     estimator = RespirationEstimator(camera, config)
 
-    # The real-world case: rms 0.00058 with SNR 9.3 dB and a clear peak.
-    assert estimator._apply_gates(rms=0.00058, snr_db=9.3, confidence=59.0, concentration=0.6, was_breathing=False) == (True, True)
-    # Same amplitude without the clear pattern still fails.
-    assert estimator._apply_gates(rms=0.00058, snr_db=9.3, confidence=59.0, concentration=0.3, was_breathing=False) == (False, False)
-    # The hard floor still applies even with a clear pattern.
-    assert estimator._apply_gates(rms=0.0002, snr_db=9.3, confidence=59.0, concentration=0.6, was_breathing=False) == (False, False)
-
+    assert estimator._apply_gates(rms=0.00058, snr_db=9.3, confidence=59.0, was_breathing=False) == (False, False)
+    assert estimator._apply_gates(rms=0.002, snr_db=9.3, confidence=59.0, was_breathing=False) == (True, True)
 
 def make_block_observation(timestamp: float, blocks: list[float], grid: tuple[int, int] = (3, 4)) -> MotionObservation:
     return MotionObservation(
@@ -181,6 +177,33 @@ def test_pure_noise_blocks_select_nothing() -> None:
     result = estimator.estimate(timestamp)
     assert result.selected_block is None
     assert not result.breathing_signal
+
+
+def test_spatially_correlated_camera_noise_never_detects() -> None:
+    """Optical-flow noise correlates neighbouring blocks by construction
+    (overlapping estimation windows), so neighbour correlation alone cannot
+    reject it — reproduces the empty-bed false lock. Localization contrast
+    and split-half rhythm stability must hold the line across seeds."""
+    camera = CameraConfig(processing_fps=5.0)
+    for seed in range(25):
+        rng = np.random.default_rng(seed)
+        estimator = RespirationEstimator(camera, SignalConfig(minimum_confidence=50.0))
+        timestamp = 0.0
+        for index in range(35 * 5):
+            timestamp = index / 5.0
+            iid = rng.normal(0, 0.003, size=(3, 4))
+            # neighbour-correlated field: each block mixes with its row/col
+            # neighbours, mimicking shared flow-window support
+            smooth = iid.copy()
+            smooth[:, 1:] += 0.7 * iid[:, :-1]
+            smooth[1:, :] += 0.7 * iid[:-1, :]
+            estimator.add(make_block_observation(timestamp, list(smooth.ravel())))
+            if index >= 25 * 5:
+                result = estimator.estimate(timestamp)
+                assert not result.breathing_signal, (
+                    f"seed {seed} false-detected at t={timestamp}: {result.reason} "
+                    f"conf={result.confidence} snr={result.snr_db}"
+                )
 
 
 def test_invalid_samples_fail_invalid() -> None:

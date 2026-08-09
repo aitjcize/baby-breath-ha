@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.7
+
+- The waveform no longer disguises noise as signal: it shows its real amplitude range in pixels (flagging "noise floor" below 0.004 px) and the trace dims to gray whenever breathing is not actually detected. Auto-scaling previously made a 0.0005 px empty-bed noise floor fill the plot exactly like genuine 0.01+ px breathing.
+
 ## 0.3.6
 
 Empty-crib false positives fixed (observed: "in crib" and a 44 BPM "detection" on an empty bed from airflow rippling the blankets):

@@ -245,7 +245,7 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
           <div class="conflbl">signal quality <span id="confPct">0</span>% — not a medical probability</div>
         </div>
         <div class="card wavecard reveal">
-          <h2>Breathing motion — last <span id="waveSpan">24</span> s</h2>
+          <h2>Breathing motion — last <span id="waveSpan">24</span> s <span class="hint mono" id="waveAmp" style="float:right"></span></h2>
           <canvas id="wave"></canvas>
         </div>
       </div>
@@ -298,6 +298,7 @@ const REASONS={
   no_spectral_energy:"No measurable motion",
   signal_snr_too_low:"Breathing motion too faint to trust",
   no_coherent_breathing_region:"No chest-like coherent motion in the box",
+  rhythm_not_stable:"Motion is not holding a steady rhythm",
   periodicity_confidence_low:"Motion present but not clearly rhythmic",
   low_confidence_without_prior_calibration:"Needs a clear breathing signal to calibrate first",
   periodic_respiration_signal_present:"Steady breathing rhythm in view",
@@ -421,6 +422,9 @@ const STATES={
 };
 function renderDash(){
   const s=status,st=STATES[s.state]||STATES.MEASUREMENT_INVALID;
+  const wy=s.waveform_y||[];
+  if(wy.length>1){const span=Math.max(...wy)-Math.min(...wy);$("waveAmp").textContent="range "+span.toPrecision(2)+" px"+(span<0.004?" — noise floor":"")}
+  else $("waveAmp").textContent="";
   const pill=$("statePill");pill.className=st.cls;pill.textContent=st.lbl;
   $("hero").className="card hero reveal "+st.hero;
   const bpm=s.bpm!=null?Math.round(s.bpm):null;
@@ -438,20 +442,22 @@ function renderDash(){
   const area=(s.roi&&s.roi[2]*s.roi[3])||0,warn=$("roiWarn");
   if(area>0.25){warn.hidden=false;warn.textContent=`⚠ Big region (${Math.round(area*100)}% of the image): supported — the mint dashed box shows where breathing is measured right now — but it must never be able to include a co-sleeping adult.`}
   else warn.hidden=true;
-  drawWave(s.waveform_y||[]);
+  drawWave(s.waveform_y||[],s.state==="BREATHING");
   const PRESENCE={PRESENT:"in crib",ABSENT:"crib empty",CHECKING:"checking…",UNKNOWN:"unknown"};
   const mq=s.mqtt||{};const halink=mq.mode==="disabled"||!mq.enabled?"off":(mq.connected?"connected":"connecting…");
   const items=[["Presence",PRESENCE[s.presence]||"—"],["HA link",halink],["Stream",s.stream_status],["Video FPS",s.estimated_fps],["SNR",s.snr_db!=null?s.snr_db+" dB":"—"],["Signal RMS",s.signal_rms],["Window",s.window_seconds+" s"],["Complete",Math.round((s.data_completeness||0)*100)+"%"],["Calibrated",s.calibrated?"yes":"not yet"],["Movement",s.excessive_motion?"high":"calm"]];
   $("diag").innerHTML=items.map(([k,v])=>`<div class="stat"><b>${k}</b><span>${v??"—"}</span></div>`).join("");
 }
-function drawWave(y){
+function drawWave(y,live){
   const c=$("wave"),d=devicePixelRatio||1,W=c.clientWidth,H=150;c.width=W*d;c.height=H*d;
   const x=c.getContext("2d");x.scale(d,d);
   x.strokeStyle="rgba(244,239,230,.07)";x.lineWidth=1;
   for(let i=1;i<4;i++){x.beginPath();x.moveTo(0,H*i/4);x.lineTo(W,H*i/4);x.stroke()}
   if(!y||y.length<2)return;
   const lo=Math.min(...y),hi=Math.max(...y),span=Math.max(hi-lo,1e-9);
-  x.strokeStyle="#7be0c3";x.lineWidth=2;x.shadowColor="rgba(123,224,195,.55)";x.shadowBlur=8;
+  if(live){x.strokeStyle="#7be0c3";x.shadowColor="rgba(123,224,195,.55)";x.shadowBlur=8}
+  else{x.strokeStyle="rgba(147,160,182,.45)";x.shadowBlur=0}
+  x.lineWidth=2;
   x.beginPath();y.forEach((v,i)=>{const px=i*W/(y.length-1),py=H-12-(v-lo)*(H-24)/span;i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();x.shadowBlur=0;
 }
 

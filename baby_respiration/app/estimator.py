@@ -57,11 +57,16 @@ class RespirationEstimator:
         return np.asarray([item.block_values for item in valid], dtype=np.float64), grid_shape
 
     # Real breathing concentrates its variance in the band (white noise puts
-    # only ~half there) and moves a chest-sized area coherently. A lone block
-    # of fluttering blanket or cherry-picked noise fails one of the two.
+    # only ~half there), moves a chest-sized area coherently, and is a spatial
+    # HOT SPOT: the chest block moves far more than the background blocks.
+    # Optical-flow noise correlates neighbours by construction (overlapping
+    # estimation windows) and camera-wide artifacts are spatially uniform, so
+    # localization contrast is the check noise cannot fake.
     MINIMUM_BLOCK_PERIODICITY = 0.6
     NEIGHBOR_CORRELATION = 0.5
     NEIGHBOR_AMPLITUDE_FRACTION = 0.2
+    BACKGROUND_CONTRAST = 3.0
+    CONTRAST_MINIMUM_BLOCKS = 12
 
     def _select_block(
         self,
@@ -97,8 +102,14 @@ class RespirationEstimator:
             periodicity = np.where(total_std > 1e-9, (band_std / np.maximum(total_std, 1e-12)) ** 2, 0.0)
         scores = periodicity * band_std
 
+        background = float(np.median(band_std))
+
         def supported(index: int) -> bool:
             if periodicity[index] < self.MINIMUM_BLOCK_PERIODICITY:
+                return False
+            # Localization: a chest is a hot spot against the background;
+            # uniform flow noise / AGC / codec pulses are not.
+            if matrix.shape[1] >= self.CONTRAST_MINIMUM_BLOCKS and band_std[index] < self.BACKGROUND_CONTRAST * background:
                 return False
             rows, cols = grid_shape
             row, col = index // cols, index % cols
@@ -147,18 +158,15 @@ class RespirationEstimator:
         rms: float,
         snr_db: float,
         confidence: float,
-        concentration: float,
         was_breathing: bool,
     ) -> tuple[bool, bool]:
-        """Schmitt-trigger gating with spectral-evidence priority.
+        """Schmitt-trigger gating: a marginal dip does not unlock a held signal.
 
-        A borderline signal hovering at a threshold otherwise flaps the state
-        every few seconds; the relaxed exit thresholds apply only while
-        breathing was being reported. And when the spectrum shows a clear,
-        concentrated breathing peak, the configured amplitude floor drops to a
-        minimal hard floor — unambiguous rhythm should not be vetoed for being
-        small (camera-distance dependent), while artifacts and noise still
-        fail the spectral checks.
+        The amplitude floor always applies — 24 s noise spectra fluke
+        concentrated peaks often enough that spectral evidence alone cannot be
+        allowed to waive it. Block-adaptive measurement removed the dilution
+        problem the old override compensated for: real breathing now measures
+        at full block amplitude, comfortably above any sane floor.
         """
         rms_floor = self.config.minimum_signal_rms
         snr_floor = self.config.minimum_snr_db
@@ -167,9 +175,6 @@ class RespirationEstimator:
             rms_floor *= 0.7
             snr_floor -= 1.5
             confidence_floor -= 8.0
-        clear_pattern = concentration >= 0.5 and snr_db >= self.config.minimum_snr_db + 5.0
-        if clear_pattern:
-            rms_floor *= 0.3
         observable = rms >= rms_floor and snr_db >= snr_floor
         breathing = observable and confidence >= confidence_floor
         self._was_breathing = breathing
@@ -330,6 +335,22 @@ class RespirationEstimator:
                 offset = float(np.clip(0.5 * (y0 - y2) / denominator, -0.5, 0.5))
                 peak_hz += offset * float(frequencies[1] - frequencies[0])
 
+        # Split-half stability: real breathing holds one rate; a noise fluke
+        # peaks at a different random frequency in each independent half.
+        half = filtered.size // 2
+        rhythm_stable = True
+        if half >= 16:
+            window = np.hanning(half)
+            half_freqs = np.fft.rfftfreq(half, d=1.0 / sample_rate)
+            half_band = (half_freqs >= low_hz) & (half_freqs <= high_hz)
+            if np.any(half_band):
+                peaks = []
+                for segment in (filtered[:half], filtered[-half:]):
+                    spectrum = np.abs(np.fft.rfft(segment * window))
+                    peaks.append(float(half_freqs[np.flatnonzero(half_band)[np.argmax(spectrum[half_band])]]))
+                tolerance = max(0.2 * max(peaks), 1.5 * (half_freqs[1] - half_freqs[0]))
+                rhythm_stable = abs(peaks[0] - peaks[1]) <= tolerance
+
         peak_mask = band_mask & (np.abs(frequencies - peak_hz) <= 0.12)
         band_power = float(np.sum(psd[band_mask]))
         peak_power = float(np.sum(psd[peak_mask]))
@@ -354,8 +375,12 @@ class RespirationEstimator:
             signal_observable = breathing_signal = False
             self._was_breathing = False
             reason = "no_coherent_breathing_region"
+        elif not rhythm_stable:
+            signal_observable = breathing_signal = False
+            self._was_breathing = False
+            reason = "rhythm_not_stable"
         else:
-            signal_observable, breathing_signal = self._apply_gates(rms, snr_db, confidence, concentration, was_breathing)
+            signal_observable, breathing_signal = self._apply_gates(rms, snr_db, confidence, was_breathing)
             reason = "breathing_signal" if breathing_signal else (
                 "signal_snr_too_low" if not signal_observable else "periodicity_confidence_low"
             )
