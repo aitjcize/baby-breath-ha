@@ -24,6 +24,11 @@ class Classification:
     calibrated: bool
 
 
+# Movement keeps refreshing the reporting hold for at most this long; a baby
+# active for longer than this deserves an honest "cannot measure" instead.
+MOVEMENT_HOLD_LIMIT = 300.0
+
+
 class ConservativeClassifier:
     """State machine that never interprets unobservable video as absent breathing."""
 
@@ -35,6 +40,7 @@ class ConservativeClassifier:
         self._calibrated = False
         self._held: Classification | None = None
         self._held_at: float | None = None
+        self._movement_refresh_since: float | None = None
 
     def reset(self) -> None:
         self._breathing_since = None
@@ -43,6 +49,7 @@ class ConservativeClassifier:
         self._calibrated = False
         self._held = None
         self._held_at = None
+        self._movement_refresh_since = None
 
     def update(
         self,
@@ -62,24 +69,40 @@ class ConservativeClassifier:
         if raw.state == DetectorState.BREATHING:
             self._held = raw
             self._held_at = now
+            self._movement_refresh_since = None
             return raw
         if raw.state in (DetectorState.NO_BREATHING_SIGNAL, DetectorState.CRIB_EMPTY):
             self._held = None
             self._held_at = None
+            self._movement_refresh_since = None
             return raw
-        if (
-            hold > 0
-            and self._held is not None
-            and self._held_at is not None
-            and now - self._held_at <= hold
-        ):
-            return Classification(
-                DetectorState.BREATHING,
-                True,
-                True,
-                f"holding_through_interruption:{raw.reason}",
-                self._held.calibrated,
-            )
+        if hold > 0 and self._held is not None and self._held_at is not None:
+            # Gross body movement makes the measurement fail while proving the
+            # baby is alive — stronger vitality evidence than a rhythm. Refresh
+            # the hold through movement (bounded), instead of expiring it.
+            movement = estimate.excessive_motion or 0.0 < estimate.motion_stability < 0.85
+            if movement:
+                if self._movement_refresh_since is None:
+                    self._movement_refresh_since = now
+                if now - self._movement_refresh_since <= MOVEMENT_HOLD_LIMIT:
+                    self._held_at = now
+                    return Classification(
+                        DetectorState.BREATHING,
+                        True,
+                        True,
+                        f"holding_through_movement:{raw.reason}",
+                        self._held.calibrated,
+                    )
+            else:
+                self._movement_refresh_since = None
+            if now - self._held_at <= hold:
+                return Classification(
+                    DetectorState.BREATHING,
+                    True,
+                    True,
+                    f"holding_through_interruption:{raw.reason}",
+                    self._held.calibrated,
+                )
         return raw
 
     def _classify(

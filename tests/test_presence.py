@@ -129,6 +129,39 @@ def test_detection_hold_smooths_brief_interruptions() -> None:
     assert late.state == DetectorState.MEASUREMENT_INVALID
 
 
+def test_movement_refreshes_the_hold_beyond_its_duration() -> None:
+    """Motion-caused measurement failure is vitality evidence: the reported
+    state rides through a long stir, while quiet losses still expire."""
+    config = SignalConfig(baseline_required_duration=2, no_breath_timeout=300, detection_hold_seconds=15)
+    classifier = ConservativeClassifier(config)
+    classifier.update(estimate(breathing=True), 0)
+    classifier.update(estimate(breathing=True), 2.1)
+
+    moving = RespirationEstimate(reason="incomplete_motion_data", excessive_motion=True, motion_stability=0.4)
+    for t in range(5, 65, 5):  # 60 s of stirring, far beyond the 15 s hold
+        held = classifier.update(moving, float(t))
+        assert held.state == DetectorState.BREATHING, f"dropped at t={t}"
+        assert held.reason.startswith("holding_through_movement")
+
+    # Movement ends into a quiet loss: the normal hold takes over, then expires.
+    quiet = RespirationEstimate(reason="stream_reconnecting")
+    assert classifier.update(quiet, 70.0).state == DetectorState.BREATHING  # within hold
+    assert classifier.update(quiet, 90.0).state == DetectorState.MEASUREMENT_INVALID
+
+
+def test_movement_hold_is_bounded() -> None:
+    config = SignalConfig(baseline_required_duration=2, no_breath_timeout=1000, detection_hold_seconds=15)
+    classifier = ConservativeClassifier(config)
+    classifier.update(estimate(breathing=True), 0)
+    classifier.update(estimate(breathing=True), 2.1)
+    moving = RespirationEstimate(reason="excessive_motion", excessive_motion=True, motion_stability=0.2)
+    t, state = 5.0, None
+    while t < 400:
+        state = classifier.update(moving, t).state
+        t += 5.0
+    assert state == DetectorState.MEASUREMENT_INVALID  # capped at 5 min
+
+
 def test_hold_never_delays_the_alarm() -> None:
     """Internal timers run from the true loss: NO_BREATHING_SIGNAL fires at
     the same absolute time and punches through an active hold."""

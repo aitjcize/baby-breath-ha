@@ -436,6 +436,7 @@ function renderDash(){
   if(bpm)document.documentElement.style.setProperty("--breath-period",Math.min(4,Math.max(1,60/bpm))+"s");
   let why=s.state==="BREATHING"?(s.rate_low?`Slower than your ${Math.round(s.low_rate_threshold)} BPM alert threshold`:""):prettyReason(s.reason);
   if(s.state==="BREATHING"&&s.reason&&s.reason.startsWith("holding_through_interruption"))why="Signal briefly interrupted — holding the last reading.";
+  else if(s.state==="BREATHING"&&s.reason&&s.reason.startsWith("holding_through_movement"))why="Baby is moving — measurement paused, movement itself shows all is well.";
   if(s.state==="CRIB_EMPTY")why="Monitoring resumes automatically when your baby is back.";
   else if(s.state==="MONITORING_OFF")why=prettyReason("monitoring_disabled");
   else if(s.scan&&s.scan.state==="running"&&s.scan.purpose==="presence")why="Checking whether the crib is occupied…";

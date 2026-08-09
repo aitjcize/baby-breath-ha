@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.16
+
+- A moving baby is a breathing baby: when the measurement fails because of gross body movement (stirring, being resettled), the reporting hold refreshes instead of expiring — `breathing_detected` stays ON with a "baby is moving" note, bounded at 5 minutes. Post-deploy logs showed movement episodes were the last source of 20–30 s unavailable gaps; movement is stronger vitality evidence than a rhythm, so reporting it as "unavailable" was wrong. Stream gaps and quiet signal losses keep the strict 15 s hold, and alarm timers remain completely unaffected.
+
 ## 0.3.15
 
 - Faster detection of dead camera sessions: the frame read timeout drops from 8 s to 4 s. Combined with the 0.5 s reconnect and the 15 s hold, a routine CuboAi session drop (confirmed camera-side behavior) should now be fully invisible: ~4 s to notice + ~1 s to reconnect + ~5 s window refill fits inside the hold. The wizard's connection test keeps the longer 8 s budget for slow first handshakes.
