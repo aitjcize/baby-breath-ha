@@ -15,6 +15,7 @@ from app.config import AppConfig, CameraConfig, normalize_roi
 from app.estimator import RespirationEstimate, RespirationEstimator
 from app.motion import DenseOpticalFlowExtractor, MotionObservation
 from app.mqtt import MQTTPublisher
+from app.presence import PresenceState, PresenceTracker
 from app.roi_scan import BreathingRegionScanner
 from app.settings import SettingsStore
 from app.web import WebServer, WebState
@@ -22,7 +23,7 @@ from app.web import WebServer, WebState
 LOGGER = logging.getLogger(__name__)
 
 # Fields that only matter to the web UI; kept out of the MQTT state payload.
-_WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi")
+_WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi", "roi_suggestion")
 
 PROBE_PREVIEW_WIDTH = 640
 
@@ -40,6 +41,9 @@ class BabyRespirationService:
         self.estimator = RespirationEstimator(self._camera, config.signal)
         self.classifier = ConservativeClassifier(config.signal)
         self.scanner = BreathingRegionScanner(config.signal)
+        self.presence = PresenceTracker(enabled=config.signal.presence_enabled)
+        self._handled_scan_id = 0
+        self._roi_suggestion: dict[str, Any] | None = None
         self.mqtt = MQTTPublisher(config.mqtt)
         self.web_state = WebState(self._camera.roi)
         self.web_server: WebServer | None = None
@@ -189,6 +193,7 @@ class BabyRespirationService:
                         observation, self._latest_overlay = self.extractor.process(snapshot.frame, snapshot.timestamp)
                         self.estimator.add(observation)
                         self.scanner.add(self.extractor.last_residual_dy, snapshot.timestamp, observation.excessive_motion)
+                        self.presence.observe(snapshot.timestamp, observation.excessive_motion)
                         observation_added = True
                     except Exception:
                         LOGGER.exception("motion extraction failed")
@@ -203,7 +208,11 @@ class BabyRespirationService:
 
                 if now - last_publish >= 1.0:
                     estimate = self.estimator.estimate(now)
-                    classification = self.classifier.update(estimate, now)
+                    if estimate.breathing_signal:
+                        self._roi_suggestion = None  # the configured region works again
+                    presence_state = self.presence.update(now, estimate.breathing_signal)
+                    self._handle_presence_scans(now, snapshot.status)
+                    classification = self.classifier.update(estimate, now, presence_state)
                     status = self._make_status(estimate, classification, snapshot.status, snapshot.reconnect_count)
                     jpeg = self._encode_overlay(self._latest_overlay, status)
                     self.latest_status = status
@@ -233,6 +242,42 @@ class BabyRespirationService:
                 self.web_server.stop()
             LOGGER.info("service stopped cleanly")
 
+    def _handle_presence_scans(self, now: float, stream_status: str) -> None:
+        """Consume finished presence scans and start requested ones."""
+        scan = self.scanner.snapshot()
+        if scan["purpose"] == "presence" and scan["id"] > self._handled_scan_id and scan["state"] in ("done", "failed"):
+            self._handled_scan_id = scan["id"]
+            if scan["state"] == "done" and "result" in scan:
+                self.presence.on_scan_completed(True, now)
+                self._maybe_suggest_roi(scan["result"])
+            elif scan.get("reason") == "no_periodic_motion_found":
+                self.presence.on_scan_completed(False, now)
+            else:  # motion during scan, too few frames, …: inconclusive
+                self.presence.on_scan_completed(None, now)
+        if (
+            self.presence.wants_scan(now)
+            and stream_status == "connected"
+            and scan["state"] != "running"
+        ):
+            ok, _ = self.scanner.start(purpose="presence")
+            if ok:
+                self.presence.on_scan_started()
+
+    def _maybe_suggest_roi(self, result: dict[str, Any]) -> None:
+        """Presence scan found breathing; flag it when outside the set region."""
+        sx, sy, sw, sh = result["roi"]
+        cx, cy, cw, ch = self._camera.roi
+        inter_w = max(0.0, min(sx + sw, cx + cw) - max(sx, cx))
+        inter_h = max(0.0, min(sy + sh, cy + ch) - max(sy, cy))
+        overlap = (inter_w * inter_h) / max(sw * sh, 1e-9)
+        if overlap < 0.25:
+            self._roi_suggestion = {"roi": result["roi"], "bpm": result["bpm"]}
+            LOGGER.info(
+                "breathing found outside the configured region (overlap %.0f%%) at ~%s BPM",
+                overlap * 100,
+                result["bpm"],
+            )
+
     def _apply_pending(self) -> None:
         with self._pending_lock:
             pending, self._pending = self._pending, {}
@@ -256,6 +301,7 @@ class BabyRespirationService:
         self.extractor = DenseOpticalFlowExtractor(self._camera, self.config.signal)
         self.estimator = RespirationEstimator(self._camera, self.config.signal)
         self.classifier.reset()
+        self._roi_suggestion = None
 
     # ---------------------------------------------------------------- output
 
@@ -308,7 +354,10 @@ class BabyRespirationService:
             "data_completeness": round(estimate.data_completeness, 3),
             "camera_configured": self.camera_configured,
             "version": __version__,
+            "presence": self.presence.state.value,
+            "presence_reason": self.presence.reason,
             "roi": list(self._camera.roi),
+            "roi_suggestion": self._roi_suggestion,
             "scan": self.scanner.snapshot(),
             "waveform_t": estimate.waveform_t,
             "waveform_y": estimate.waveform_y,

@@ -252,6 +252,7 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
             </span>
             <span class="hint mono" id="roiLbl"></span>
           </div>
+          <p class="msg" id="suggestHint" hidden style="margin:10px 0 0;font-size:13.5px"></p>
         </div>
         <div class="diag" id="diag"></div>
       </div>
@@ -317,7 +318,7 @@ function drawHeatmap(x,hm,w,h){const rows=hm.length,cols=hm[0].length;for(let r=
 
 function renderRegionCanvas(){
   const view=fitCanvas($("regionCanvas"),$("regionImg"));if(!view)return;
-  const{x,w,h}=view,scan=status&&status.scan;
+  const{x,w,h}=view,scan=(status&&status.scan&&status.scan.purpose==="user")?status.scan:null;
   if(scan&&scan.state==="done"&&scan.result&&!roiDirty){drawHeatmap(x,scan.result.heatmap,w,h);drawRoiRect(x,scan.result.roi,w,h,"#ffc98a","rgba(255,201,138,.14)")}
   if(pendingRoi)drawRoiRect(x,pendingRoi,w,h,"#7be0c3","rgba(123,224,195,.15)");
   else if(!scan||scan.state!=="done")if(status&&status.roi)drawRoiRect(x,status.roi,w,h,"rgba(244,239,230,.35)","rgba(244,239,230,.05)");
@@ -365,7 +366,7 @@ $("autoBtn").addEventListener("click",async()=>{
 });
 $("cancelScan").addEventListener("click",()=>{post("api/scan/cancel").catch(()=>{});$("scanVeil").hidden=true;scanWasRunning=false});
 $("saveRegion").addEventListener("click",async()=>{
-  const roi=pendingRoi||(status.scan&&status.scan.result&&status.scan.result.roi);if(!roi)return;
+  const roi=pendingRoi||(status.scan&&status.scan.purpose==="user"&&status.scan.result&&status.scan.result.roi);if(!roi)return;
   try{await post("api/settings",{roi});forced=null;pendingRoi=null;setView("dashboard");}
   catch(e){$("scanMsg").className="msg err";$("scanMsg").textContent=e.message}
 });
@@ -374,7 +375,7 @@ $("editCam").addEventListener("click",()=>{forced="camera";setView("wizard",2)})
 
 /* ---------- scan progress ---------- */
 function renderScan(){
-  const scan=status.scan||{state:"idle"};
+  const scan=(status.scan&&status.scan.purpose==="user")?status.scan:{state:"idle"};
   $("saveRegion").disabled=!(pendingRoi||(scan.state==="done"&&scan.result));
   if(scan.state==="running"){
     $("scanVeil").hidden=false;scanWasRunning=true;
@@ -401,6 +402,7 @@ const STATES={
   BREATHING:{cls:"pill ok",lbl:"Breathing detected",hero:""},
   MEASUREMENT_INVALID:{cls:"pill warn",lbl:"Measurement unavailable",hero:"still"},
   NO_BREATHING_SIGNAL:{cls:"pill alert",lbl:"No breathing signal — check now",hero:"alert"},
+  CRIB_EMPTY:{cls:"pill",lbl:"Crib empty — monitoring paused",hero:"still"},
 };
 function renderDash(){
   const s=status,st=STATES[s.state]||STATES.MEASUREMENT_INVALID;
@@ -409,11 +411,18 @@ function renderDash(){
   const bpm=s.bpm!=null?Math.round(s.bpm):null;
   $("bpm").textContent=bpm!=null?bpm:"—";
   if(bpm)document.documentElement.style.setProperty("--breath-period",Math.min(4,Math.max(1,60/bpm))+"s");
-  $("why").textContent=s.state==="BREATHING"?"":prettyReason(s.reason);
+  let why=s.state==="BREATHING"?"":prettyReason(s.reason);
+  if(s.state==="CRIB_EMPTY")why="Monitoring resumes automatically when your baby is back.";
+  else if(s.scan&&s.scan.state==="running"&&s.scan.purpose==="presence")why="Checking whether the crib is occupied…";
+  $("why").textContent=why;
   const conf=Math.round(s.confidence||0);$("confFill").style.width=conf+"%";$("confPct").textContent=conf;
   $("roiLbl").textContent="region "+ (s.roi||[]).map(v=>Number(v).toFixed(2)).join(", ");
+  const hint=$("suggestHint");
+  if(s.roi_suggestion){hint.hidden=false;hint.textContent=`Breathing found outside your region (~${Math.round(s.roi_suggestion.bpm)} BPM) — consider Re-detect.`}
+  else hint.hidden=true;
   drawWave(s.waveform_y||[]);
-  const items=[["Stream",s.stream_status],["Video FPS",s.estimated_fps],["SNR",s.snr_db!=null?s.snr_db+" dB":"—"],["Signal RMS",s.signal_rms],["Window",s.window_seconds+" s"],["Complete",Math.round((s.data_completeness||0)*100)+"%"],["Calibrated",s.calibrated?"yes":"not yet"],["Movement",s.excessive_motion?"high":"calm"]];
+  const PRESENCE={PRESENT:"in crib",ABSENT:"crib empty",CHECKING:"checking…",UNKNOWN:"unknown"};
+  const items=[["Presence",PRESENCE[s.presence]||"—"],["Stream",s.stream_status],["Video FPS",s.estimated_fps],["SNR",s.snr_db!=null?s.snr_db+" dB":"—"],["Signal RMS",s.signal_rms],["Window",s.window_seconds+" s"],["Complete",Math.round((s.data_completeness||0)*100)+"%"],["Calibrated",s.calibrated?"yes":"not yet"],["Movement",s.excessive_motion?"high":"calm"]];
   $("diag").innerHTML=items.map(([k,v])=>`<div class="stat"><b>${k}</b><span>${v??"—"}</span></div>`).join("");
 }
 function drawWave(y){

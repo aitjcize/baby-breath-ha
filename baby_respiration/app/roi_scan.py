@@ -57,8 +57,10 @@ class BreathingRegionScanner:
         self._samples: list[np.ndarray] = []
         self._timestamps: list[float] = []
         self._excessive_count = 0
+        self._purpose = "user"  # "user" (wizard) | "presence" (occupancy check)
+        self._scan_id = 0
 
-    def start(self, duration: float | None = None) -> tuple[bool, str]:
+    def start(self, duration: float | None = None, purpose: str = "user") -> tuple[bool, str]:
         with self._lock:
             if self._state == "running":
                 return False, "A scan is already running."
@@ -71,6 +73,8 @@ class BreathingRegionScanner:
             self._samples = []
             self._timestamps = []
             self._excessive_count = 0
+            self._purpose = purpose
+            self._scan_id += 1
             return True, "Scan started."
 
     def cancel(self) -> None:
@@ -90,7 +94,12 @@ class BreathingRegionScanner:
             progress = 0.0
             if self._state == "running" and self._started_at is not None and self._timestamps:
                 progress = min(1.0, (self._timestamps[-1] - self._started_at) / self._duration)
-            payload: dict[str, Any] = {"state": self._state, "progress": round(progress, 3)}
+            payload: dict[str, Any] = {
+                "state": self._state,
+                "progress": round(progress, 3),
+                "purpose": self._purpose,
+                "id": self._scan_id,
+            }
             if self._state == "failed":
                 payload["reason"] = self._reason
             if self._result is not None:

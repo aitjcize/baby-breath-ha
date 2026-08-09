@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- Crib presence detection (no ML): pickup-shaped disturbances followed by full-frame breathing scans decide `PRESENT`/`ABSENT`; sudden signal loss without a disturbance can never be classified as absence, so the no-breathing alert path stays armed.
+- New entities: `sensor.baby_presence` and `binary_sensor.baby_in_crib` (occupancy, unavailable while undecided). `NO_BREATHING_SIGNAL` now requires confirmed presence; a confirmed-empty crib shows the new `CRIB_EMPTY` state and pauses monitoring until the baby returns.
+- When a presence scan finds breathing outside the configured region, the dashboard suggests re-detecting (the region is never moved automatically).
+- New `presence_detection` option (default on); off restores the previous always-occupied behavior.
+- Recommended notification recipe documented: alert only when present AND (no breathing OR measurement invalid for a sustained period).
+
 ## 0.2.0
 
 First release as a Home Assistant add-on.

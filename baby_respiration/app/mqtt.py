@@ -29,6 +29,7 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
     state_topic = f"{base}/state"
     service_availability = f"{base}/availability"
     measurement_availability = f"{base}/measurement_availability"
+    presence_availability = f"{base}/presence_availability"
 
     def common(name: str, object_id: str, availability: str = service_availability) -> dict[str, Any]:
         return {
@@ -59,6 +60,20 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
     valid = common("Respiration measurement valid", "baby_respiration_measurement_valid")
     valid.update({"value_template": "{{ 'ON' if value_json.measurement_valid else 'OFF' }}", "payload_on": "ON", "payload_off": "OFF", "entity_category": "diagnostic", "icon": "mdi:check-decagram-outline"})
     entities.append(("binary_sensor", "baby_respiration_measurement_valid", valid))
+
+    presence = common("Baby presence", "baby_presence")
+    presence.update({"value_template": "{{ value_json.presence }}", "icon": "mdi:crib"})
+    entities.append(("sensor", "baby_presence", presence))
+
+    in_crib = common("Baby in crib", "baby_in_crib", presence_availability)
+    in_crib.update({
+        "value_template": "{{ 'ON' if value_json.presence == 'PRESENT' else 'OFF' }}",
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "device_class": "occupancy",
+        "icon": "mdi:crib",
+    })
+    entities.append(("binary_sensor", "baby_in_crib", in_crib))
 
     diagnostics = {
         "baby_respiration_state": ("Detector state", "state", None, "mdi:state-machine"),
@@ -132,12 +147,21 @@ class MQTTPublisher:
         self._client.publish(f"{self.config.base_topic}/state", json.dumps(state, allow_nan=False, separators=(",", ":")), qos=0, retain=True)
         availability = "online" if state.get("measurement_valid") else "offline"
         self._client.publish(f"{self.config.base_topic}/measurement_availability", availability, qos=1, retain=True)
+        # The in-crib binary sensor is only meaningful once presence is decided.
+        presence_known = state.get("presence") in ("PRESENT", "ABSENT")
+        self._client.publish(
+            f"{self.config.base_topic}/presence_availability",
+            "online" if presence_known else "offline",
+            qos=1,
+            retain=True,
+        )
 
     def stop(self) -> None:
         if not self._client:
             return
         if self._connected:
             self._client.publish(f"{self.config.base_topic}/measurement_availability", "offline", qos=1, retain=True)
+            self._client.publish(f"{self.config.base_topic}/presence_availability", "offline", qos=1, retain=True)
             self._client.publish(f"{self.config.base_topic}/availability", "offline", qos=1, retain=True)
             self._client.disconnect()
         self._client.loop_stop()

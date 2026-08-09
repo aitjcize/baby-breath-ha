@@ -17,6 +17,9 @@ configuration:
   no_breath_timeout:
     name: No-breathing timeout
     description: Seconds a calibrated, observable region must show no periodic motion before the state becomes NO_BREATHING_SIGNAL.
+  presence_detection:
+    name: Presence detection
+    description: Pause monitoring when the crib is confirmed empty (pickup event followed by full-frame scans finding no breathing). Turn off to always treat the crib as occupied.
   mqtt_custom_broker:
     name: Use a custom MQTT broker
     description: Turn on to use the broker settings below instead of the broker Home Assistant provides (e.g. the Mosquitto add-on).

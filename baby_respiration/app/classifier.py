@@ -5,12 +5,14 @@ from enum import Enum
 
 from app.config import SignalConfig
 from app.estimator import RespirationEstimate
+from app.presence import PresenceState
 
 
 class DetectorState(str, Enum):
     BREATHING = "BREATHING"
     NO_BREATHING_SIGNAL = "NO_BREATHING_SIGNAL"
     MEASUREMENT_INVALID = "MEASUREMENT_INVALID"
+    CRIB_EMPTY = "CRIB_EMPTY"
 
 
 @dataclass(frozen=True)
@@ -38,7 +40,21 @@ class ConservativeClassifier:
         self._invalid_since = None
         self._calibrated = False
 
-    def update(self, estimate: RespirationEstimate, now: float) -> Classification:
+    def update(
+        self,
+        estimate: RespirationEstimate,
+        now: float,
+        presence: PresenceState = PresenceState.PRESENT,
+    ) -> Classification:
+        if presence == PresenceState.ABSENT:
+            # Confirmed empty crib: nothing to measure, and the next occupancy
+            # must recalibrate from scratch.
+            self._breathing_since = None
+            self._no_signal_since = None
+            self._invalid_since = None
+            self._calibrated = False
+            return Classification(DetectorState.CRIB_EMPTY, False, None, "crib_empty", False)
+
         quality_valid = estimate.technical_valid and estimate.signal_observable
         if not quality_valid:
             self._breathing_since = None
@@ -88,6 +104,16 @@ class ConservativeClassifier:
                 False,
                 None,
                 f"respiration_signal_missing_pending_timeout:{elapsed:.1f}s",
+                True,
+            )
+        if presence != PresenceState.PRESENT:
+            # Signal gone right after a pickup-shaped disturbance: presence is
+            # being verified (or is unknown), so withhold the alarm state.
+            return Classification(
+                DetectorState.MEASUREMENT_INVALID,
+                False,
+                None,
+                "signal_missing_presence_unverified",
                 True,
             )
         return Classification(

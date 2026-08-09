@@ -40,6 +40,7 @@ class SignalConfig:
     minimum_sharpness: float = 1.0
     maximum_interpolation_gap: float = 1.0
     baseline_required_duration: float = 10.0
+    presence_enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,7 @@ def load_addon_config(options_path: str | Path = ADDON_OPTIONS_PATH) -> AppConfi
         max_bpm=float(raw.get("max_bpm", 90)),
         minimum_confidence=float(raw.get("minimum_confidence", 55)),
         no_breath_timeout=float(raw.get("no_breath_timeout", 12)),
+        presence_enabled=bool(raw.get("presence_detection", True)),
     )
     config = AppConfig(
         camera=camera,

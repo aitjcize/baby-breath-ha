@@ -1,5 +1,5 @@
 name: Baby Respiration Monitor
-version: "0.2.0"
+version: "0.3.0"
 slug: baby_respiration
 description: Experimental camera breathing-motion monitor — a secondary monitor, never a medical or life-safety device
 url: https://github.com/aitjcize/baby-breath-ha
@@ -23,6 +23,7 @@ options:
   max_bpm: 90
   minimum_confidence: 55
   no_breath_timeout: 12
+  presence_detection: true
   mqtt_custom_broker: false
   mqtt_host: ""
   mqtt_port: 1883
@@ -37,6 +38,7 @@ schema:
   max_bpm: int(20,120)
   minimum_confidence: int(0,100)
   no_breath_timeout: int(5,120)
+  presence_detection: bool
   mqtt_custom_broker: bool
   mqtt_host: str
   mqtt_port: port
