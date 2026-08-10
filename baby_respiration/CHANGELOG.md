@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.25
+
+- Bed-exit warning for open-bed sleepers: a motion trail originating inside the box that crosses out and stays out for ~1.5 s fires `binary_sensor.baby_left_region` (device class *safety*) within seconds — no object detector, pure optical-flow trail tracking, works in IR. Caregiver reaches (origin outside the box) and in-place stirring never fire it; it clears automatically when breathing re-locks inside the box. Panel shows a warning banner while active.
+
 ## 0.3.24
 
 - Detector state actually lands in the Sensors section now: Home Assistant's registry keeps a previously-set `entity_category` when an updated discovery payload merely omits it, so the entity is deleted and immediately re-created on connect (same entity_id — history and automations unaffected).

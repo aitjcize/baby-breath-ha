@@ -86,6 +86,16 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
     })
     entities.append(("binary_sensor", "baby_breathing_rate_low", rate_low))
 
+    left = common("Baby left region", "baby_left_region")
+    left.update({
+        "value_template": "{{ 'ON' if value_json.left_region else 'OFF' }}",
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "device_class": "safety",
+        "icon": "mdi:exit-run",
+    })
+    entities.append(("binary_sensor", "baby_left_region", left))
+
     state = common("Detector state", "baby_respiration_state")
     state.update({
         "value_template": "{{ value_json.state }}",

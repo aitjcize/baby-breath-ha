@@ -42,6 +42,8 @@ class DenseOpticalFlowExtractor:
         # Residual vertical flow of the latest frame pair (global motion already
         # subtracted), for consumers such as the breathing-region scanner.
         self.last_residual_dy: np.ndarray | None = None
+        # Full-frame residual motion magnitude, for the region-exit watch.
+        self.last_residual_magnitude: np.ndarray | None = None
         # Normalized (x, y, w, h) of each ROI block, row-major, matching the
         # order of MotionObservation.block_values.
         self.block_rects: list[tuple[float, float, float, float]] | None = None
@@ -50,6 +52,7 @@ class DenseOpticalFlowExtractor:
         self._previous_gray = None
         self._frozen_frames = 0
         self.last_residual_dy = None
+        self.last_residual_magnitude = None
         self.block_rects = None
 
     def _prepare(self, frame: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -156,6 +159,7 @@ class DenseOpticalFlowExtractor:
         global_dy = float(np.median(flow[..., 1]))
         global_motion = float(np.hypot(global_dx, global_dy))
         self.last_residual_dy = flow[..., 1] - global_dy
+        self.last_residual_magnitude = np.hypot(flow[..., 0] - global_dx, self.last_residual_dy)
 
         roi_flow = flow[y0:y1, x0:x1]
         residual_x = roi_flow[..., 0] - global_dx

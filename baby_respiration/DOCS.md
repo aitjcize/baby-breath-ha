@@ -84,6 +84,19 @@ conditions:
     state: "on"
 ```
 
+## Bed-exit warning
+
+For babies sleeping on an open bed rather than a crib: if a motion trail that **originates inside your box** (the baby — a caregiver's reach originates outside it) crosses the boundary and stays out for ~1.5 s, `binary_sensor.baby_left_region` turns ON within seconds and the panel shows a warning. It clears automatically when breathing is found inside the box again. Notify on it directly:
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.baby_left_region
+    to: "on"
+```
+
+This is motion-based (works in IR night vision); a baby that leaves while being carried does not fire it — that is the presence machinery's job.
+
 ## Scheduling monitoring
 
 Monitoring only makes sense while the baby is asleep. Automate `switch.baby_monitoring` — e.g. on at bedtime, off in the morning:

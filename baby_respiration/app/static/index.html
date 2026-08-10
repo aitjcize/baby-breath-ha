@@ -271,6 +271,7 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
             <button class="btn-ghost" id="tuneBtn">Tuning</button>
           </div>
           <p class="hint mono" id="roiLbl" style="margin:12px 2px 0"></p>
+          <p class="msg err" id="leftBanner" hidden style="margin:10px 0 0;font-weight:650"></p>
           <p class="msg" id="suggestHint" hidden style="margin:10px 0 0;font-size:13.5px"></p>
           <p id="roiWarn" hidden style="margin:10px 0 0;font-size:13.5px;color:var(--amber)"></p>
         </div>
@@ -501,6 +502,9 @@ function renderDash(){
   $("monitorBtn").textContent=s.monitoring===false?"Resume":"Pause";
   const conf=Math.round(s.confidence||0);$("confFill").style.width=conf+"%";$("confPct").textContent=conf;
   $("roiLbl").textContent="region "+ (s.roi||[]).map(v=>Number(v).toFixed(2)).join(", ");
+  const banner=$("leftBanner");
+  if(s.left_region){banner.hidden=false;banner.textContent="⚠ Baby appears to have LEFT the monitored region — check now. Clears automatically when breathing is found inside again."}
+  else banner.hidden=true;
   const hint=$("suggestHint");
   if(s.roi_suggestion){hint.hidden=false;hint.textContent=`Breathing found outside your region (~${Math.round(s.roi_suggestion.bpm)} BPM) — consider enlarging or moving your box.`}
   else hint.hidden=true;

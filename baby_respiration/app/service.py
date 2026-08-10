@@ -14,6 +14,7 @@ from app.capture import DisabledFrameSource, RTSPFrameSource, SyntheticFrameSour
 from app.classifier import Classification, ConservativeClassifier, DetectorState
 from app.config import AppConfig, CameraConfig, SignalConfig, normalize_roi
 from app.estimator import RespirationEstimate, RespirationEstimator
+from app.exit_watch import RegionExitWatch
 from app.motion import DenseOpticalFlowExtractor, MotionObservation
 from app.mqtt import MQTTPublisher
 from app.presence import PresenceState, PresenceTracker
@@ -24,7 +25,7 @@ from app.web import WebServer, WebState
 LOGGER = logging.getLogger(__name__)
 
 # Fields that only matter to the web UI; kept out of the MQTT state payload.
-_WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi", "roi_suggestion", "mqtt", "active_block", "invalid_breakdown", "tuning")
+_WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi", "roi_suggestion", "mqtt", "active_block", "invalid_breakdown", "tuning", "left_region_info")
 
 PROBE_PREVIEW_WIDTH = 640
 # Panel-tunable fields with their allowed ranges (processing_fps and
@@ -71,6 +72,7 @@ class BabyRespirationService:
         self.classifier = ConservativeClassifier(self._signal)
         self.scanner = BreathingRegionScanner(self._signal)
         self.presence = PresenceTracker(enabled=self._signal.presence_enabled)
+        self.exit_watch = RegionExitWatch(self._camera.roi)
         self._handled_scan_id = 0
         self._roi_suggestion: dict[str, Any] | None = None
         self.mqtt = MQTTPublisher(self._effective_mqtt(), on_monitoring_command=self._on_monitoring_command)
@@ -361,6 +363,7 @@ class BabyRespirationService:
                         self.estimator.add(observation)
                         self.scanner.add(self.extractor.last_residual_dy, snapshot.timestamp, observation.excessive_motion)
                         self.presence.observe(snapshot.timestamp, observation.excessive_motion)
+                        self.exit_watch.observe(snapshot.timestamp, self.extractor.last_residual_magnitude)
                         observation_added = True
                     except Exception:
                         LOGGER.exception("motion extraction failed")
@@ -388,6 +391,8 @@ class BabyRespirationService:
                     self._write_telemetry(status, estimate, presence_state.value)
                     if estimate.breathing_signal and estimate.bpm:
                         self._save_warm_state(estimate.bpm)
+                    if classification.reason == "periodic_respiration_signal_present":
+                        self.exit_watch.clear()
                     if classification.state.value != self._last_logged_state:
                         LOGGER.info(
                             "STATE CHANGE %s -> %s (reason=%s bpm=%s conf=%.1f rms=%.5f snr=%s conc=%.3f block=%s presence=%s stream=%s invalid=%s)",
@@ -515,6 +520,7 @@ class BabyRespirationService:
                 self.estimator.clear()
                 self.classifier.reset()
                 self.presence.reset()
+                self.exit_watch = RegionExitWatch(self._camera.roi)
                 self._roi_suggestion = None
                 self._rate_low = False
                 if enabled:
@@ -550,6 +556,7 @@ class BabyRespirationService:
         self.extractor = DenseOpticalFlowExtractor(self._camera, self._signal)
         self.estimator = RespirationEstimator(self._camera, self._signal)
         self.classifier.reset()
+        self.exit_watch = RegionExitWatch(self._camera.roi)
         self._roi_suggestion = None
 
     # ---------------------------------------------------------------- output
@@ -633,6 +640,8 @@ class BabyRespirationService:
             "monitoring": True,
             "presence": self.presence.state.value,
             "presence_reason": self.presence.reason,
+            "left_region": self.exit_watch.fired,
+            "left_region_info": self.exit_watch.snapshot(),
             "roi": list(self._camera.roi),
             "roi_suggestion": self._roi_suggestion,
             "active_block": active_block,
@@ -772,6 +781,8 @@ class BabyRespirationService:
             "monitoring": False,
             "presence": "UNKNOWN",
             "presence_reason": "monitoring_disabled",
+            "left_region": False,
+            "left_region_info": None,
             "roi": list(self._camera.roi),
             "roi_suggestion": None,
             "active_block": None,
