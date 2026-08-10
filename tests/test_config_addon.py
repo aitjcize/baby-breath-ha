@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from app.config import load_addon_config
+from app.config import CameraConfig, SignalConfig, load_addon_config
 
 
 def write_options(tmp_path: Path, **options) -> Path:
@@ -21,6 +21,18 @@ def test_defaults_without_mqtt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert config.mqtt.enabled is False
     assert config.debug.host == "0.0.0.0"
     assert config.debug.port == 8080
+
+
+def test_empty_options_use_dataclass_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The loader must not shadow dataclass defaults with its own literals —
+    a drifted fallback once silently ran the detection hold at 10 s while the
+    dataclass (and everyone reading it) said 15."""
+    monkeypatch.delenv("BABY_MQTT_HOST", raising=False)
+    config = load_addon_config(write_options(tmp_path))
+    assert config.signal == SignalConfig()
+    assert config.camera.processing_fps == CameraConfig().processing_fps
+    assert config.camera.target_processing_width == CameraConfig().target_processing_width
+    assert config.signal.detection_hold_seconds == 15.0
 
 
 def test_supervisor_mqtt_service_via_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

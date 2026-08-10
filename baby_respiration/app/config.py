@@ -141,20 +141,31 @@ def load_addon_config(options_path: str | Path = ADDON_OPTIONS_PATH) -> AppConfi
     if not isinstance(raw, dict):
         raise ValueError("add-on options root must be a mapping")
 
-    camera = CameraConfig(
-        processing_fps=float(raw.get("processing_fps", 5)),
-        target_processing_width=int(raw.get("target_processing_width", 320)),
-    )
-    signal = SignalConfig(
-        min_bpm=float(raw.get("min_bpm", 15)),
-        max_bpm=float(raw.get("max_bpm", 90)),
-        minimum_confidence=float(raw.get("minimum_confidence", 55)),
-        no_breath_timeout=float(raw.get("no_breath_timeout", 12)),
-        minimum_signal_rms=float(raw.get("minimum_signal_rms", 0.001)),
-        low_rate_threshold_bpm=float(raw.get("low_rate_threshold_bpm", 20)),
-        detection_hold_seconds=float(raw.get("detection_hold_seconds", 10)),
-        presence_enabled=bool(raw.get("presence_detection", True)),
-    )
+    # Only keys actually present override the dataclass defaults, so every
+    # default lives in exactly one place (the dataclasses above) and cannot
+    # silently drift the way a duplicated fallback literal can.
+    camera_kwargs: dict[str, Any] = {}
+    if "processing_fps" in raw:
+        camera_kwargs["processing_fps"] = float(raw["processing_fps"])
+    if "target_processing_width" in raw:
+        camera_kwargs["target_processing_width"] = int(raw["target_processing_width"])
+    camera = CameraConfig(**camera_kwargs)
+
+    signal_kwargs: dict[str, Any] = {}
+    for key, cast in (
+        ("min_bpm", float),
+        ("max_bpm", float),
+        ("minimum_confidence", float),
+        ("no_breath_timeout", float),
+        ("minimum_signal_rms", float),
+        ("low_rate_threshold_bpm", float),
+        ("detection_hold_seconds", float),
+    ):
+        if key in raw:
+            signal_kwargs[key] = cast(raw[key])
+    if "presence_detection" in raw:
+        signal_kwargs["presence_enabled"] = bool(raw["presence_detection"])
+    signal = SignalConfig(**signal_kwargs)
     config = AppConfig(
         camera=camera,
         signal=signal,
