@@ -53,36 +53,35 @@ Presence has an honest `UNKNOWN` state (startup, prolonged verification failure)
 
 A single device is created with:
 
-- `sensor.baby_respiration_rate` — breaths per minute
-- `sensor.baby_respiration_confidence` — signal quality 0–100 (**not** a medical probability)
-- `binary_sensor.baby_breathing_detected`
-- `binary_sensor.baby_respiration_measurement_valid`
-- `binary_sensor.baby_breathing_rate_low` — on while the measured rate sits below your configured threshold (device class *problem*; unavailable while not measuring)
-- `switch.baby_monitoring` — turn analysis on/off (e.g. schedule it for sleep times); while off, CPU drops to near zero, no alerts can fire, and measurement entities are unavailable
+- `sensor.baby_respiration_state` — the primary summary: `BREATHING` / `NO_BREATHING_SIGNAL` / `MEASUREMENT_INVALID` / `CRIB_EMPTY` / `MONITORING_OFF`
+- `sensor.baby_respiration_rate` — breaths per minute (unavailable while not measuring)
 - `sensor.baby_presence` — `PRESENT` / `ABSENT` / `CHECKING` / `UNKNOWN`
-- `binary_sensor.baby_in_crib` — occupancy; *unavailable* while presence is undecided
-- Diagnostics: detector state, signal RMS, SNR, video FPS, analysis window, stream status, reason, and excessive motion.
+- `binary_sensor.baby_breathing_rate_low` — on while the measured rate sits below your configured threshold (device class *problem*; unavailable while not measuring)
+- `switch.baby_monitoring` — turn analysis on/off (e.g. schedule it for sleep times); while off, CPU drops to near zero and no alerts can fire
+- `sensor.baby_respiration_confidence` and diagnostics: signal RMS, SNR, video FPS, analysis window, stream status, reason, excessive motion.
 
-**Automations must gate any use of `baby_breathing_detected` on `baby_respiration_measurement_valid`, and should gate notifications on presence.** The recommended notification condition (still never as a life-safety mechanism):
+Everything else is derivable from the two enum sensors — breathing detected is `state == BREATHING`, measurement valid is `state in (BREATHING, NO_BREATHING_SIGNAL)`, in-crib is `presence == PRESENT` — so no separate binary entities exist for them. The recommended notification automation (still never a life-safety mechanism):
 
 ```yaml
-condition:
+triggers:
+  - trigger: state                 # clear video, no breathing rhythm
+    entity_id: sensor.baby_respiration_state
+    to: "NO_BREATHING_SIGNAL"
+  - trigger: state                 # cannot measure for a sustained period
+    entity_id: sensor.baby_respiration_state
+    to: "MEASUREMENT_INVALID"
+    for: "00:05:00"
+  - trigger: state                 # measured rate below your threshold
+    entity_id: binary_sensor.baby_breathing_rate_low
+    to: "on"
+    for: "00:00:30"
+conditions:
   - condition: state
-    entity_id: binary_sensor.baby_in_crib
+    entity_id: sensor.baby_presence
+    state: "PRESENT"
+  - condition: state
+    entity_id: switch.baby_monitoring
     state: "on"
-  - condition: or
-    conditions:
-      - condition: state           # clear video, no breathing rhythm
-        entity_id: sensor.baby_respiration_state
-        state: "NO_BREATHING_SIGNAL"
-      - condition: state           # cannot measure for a sustained period
-        entity_id: binary_sensor.baby_respiration_measurement_valid
-        state: "off"
-        for: "00:05:00"
-      - condition: state           # measured rate below your threshold
-        entity_id: binary_sensor.baby_breathing_rate_low
-        state: "on"
-        for: "00:00:30"
 ```
 
 ## Scheduling monitoring

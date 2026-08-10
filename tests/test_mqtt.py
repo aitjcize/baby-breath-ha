@@ -12,11 +12,9 @@ def test_discovery_payloads_are_valid_and_include_required_entities() -> None:
     required = {
         "baby_respiration_rate",
         "baby_respiration_confidence",
-        "baby_breathing_detected",
-        "baby_respiration_measurement_valid",
         "baby_breathing_rate_low",
         "baby_presence",
-        "baby_in_crib",
+        "baby_respiration_state",
     }
     object_ids = {payload["object_id"] for payload in payloads.values()}
     assert required <= object_ids
@@ -24,8 +22,11 @@ def test_discovery_payloads_are_valid_and_include_required_entities() -> None:
     assert all(payload["state_topic"] == "baby_respiration/state" for payload in payloads.values())
     assert all(payload["device"]["identifiers"] == ["baby_respiration_detector"] for payload in payloads.values())
 
-    breathing = next(payload for payload in payloads.values() if payload["object_id"] == "baby_breathing_detected")
-    assert breathing["availability_topic"] == "baby_respiration/measurement_availability"
+    removed = {"baby_breathing_detected", "baby_respiration_measurement_valid", "baby_in_crib"}
+    assert not removed & object_ids  # derived binaries consolidated into the enums
+
+    presence = next(payload for payload in payloads.values() if payload["object_id"] == "baby_presence")
+    assert presence["icon"] == "mdi:teddy-bear"
 
     switch = next(payload for payload in payloads.values() if payload["object_id"] == "baby_monitoring")
     assert switch["command_topic"] == "baby_respiration/monitoring/set"
@@ -57,6 +58,7 @@ def test_availability_publishes_before_state_when_going_offline() -> None:
 
     publisher.publish({"measurement_valid": False, "presence": "UNKNOWN"})
     assert fake.calls.index("baby_respiration/measurement_availability") < fake.calls.index("baby_respiration/state")
+    assert "baby_respiration/presence_availability" not in fake.calls
 
     fake.calls.clear()
     publisher.publish({"measurement_valid": True, "presence": "PRESENT"})

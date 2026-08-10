@@ -11,6 +11,13 @@ from app.config import MQTTConfig
 
 LOGGER = logging.getLogger(__name__)
 DEVICE_ID = "baby_respiration_detector"
+# Entities dropped from the schema; an empty retained payload on their config
+# topics tells Home Assistant to delete them.
+REMOVED_ENTITIES = (
+    ("binary_sensor", "baby_breathing_detected"),
+    ("binary_sensor", "baby_respiration_measurement_valid"),
+    ("binary_sensor", "baby_in_crib"),
+)
 
 
 def _device() -> dict[str, Any]:
@@ -29,7 +36,6 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
     state_topic = f"{base}/state"
     service_availability = f"{base}/availability"
     measurement_availability = f"{base}/measurement_availability"
-    presence_availability = f"{base}/presence_availability"
 
     def common(name: str, object_id: str, availability: str = service_availability) -> dict[str, Any]:
         return {
@@ -52,14 +58,6 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
     confidence = common("Respiration confidence", "baby_respiration_confidence")
     confidence.update({"value_template": "{{ value_json.confidence }}", "unit_of_measurement": "%", "state_class": "measurement", "icon": "mdi:signal", "entity_category": "diagnostic"})
     entities.append(("sensor", "baby_respiration_confidence", confidence))
-
-    breathing = common("Breathing detected", "baby_breathing_detected", measurement_availability)
-    breathing.update({"value_template": "{{ 'ON' if value_json.breathing_detected else 'OFF' }}", "payload_on": "ON", "payload_off": "OFF", "icon": "mdi:lungs"})
-    entities.append(("binary_sensor", "baby_breathing_detected", breathing))
-
-    valid = common("Respiration measurement valid", "baby_respiration_measurement_valid")
-    valid.update({"value_template": "{{ 'ON' if value_json.measurement_valid else 'OFF' }}", "payload_on": "ON", "payload_off": "OFF", "entity_category": "diagnostic", "icon": "mdi:check-decagram-outline"})
-    entities.append(("binary_sensor", "baby_respiration_measurement_valid", valid))
 
     monitoring = common("Monitoring", "baby_monitoring")
     monitoring.update({
@@ -97,19 +95,9 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
         "value_template": "{{ value_json.presence }}",
         "device_class": "enum",
         "options": ["PRESENT", "ABSENT", "CHECKING", "UNKNOWN"],
-        "icon": "mdi:crib",
+        "icon": "mdi:teddy-bear",
     })
     entities.append(("sensor", "baby_presence", presence))
-
-    in_crib = common("Baby in crib", "baby_in_crib", presence_availability)
-    in_crib.update({
-        "value_template": "{{ 'ON' if value_json.presence == 'PRESENT' else 'OFF' }}",
-        "payload_on": "ON",
-        "payload_off": "OFF",
-        "device_class": "occupancy",
-        "icon": "mdi:crib",
-    })
-    entities.append(("binary_sensor", "baby_in_crib", in_crib))
 
     diagnostics = {
         "baby_respiration_signal_rms": ("Signal RMS", "signal_rms", "px", "mdi:chart-bell-curve"),
@@ -189,6 +177,9 @@ class MQTTPublisher:
         LOGGER.info("MQTT connected")
         client.publish(f"{self.config.base_topic}/availability", "online", qos=1, retain=True)
         client.subscribe(f"{self.config.base_topic}/monitoring/set", qos=1)
+        discovery = self.config.discovery_prefix.rstrip("/")
+        for component, object_id in REMOVED_ENTITIES:
+            client.publish(f"{discovery}/{component}/{DEVICE_ID}/{object_id}/config", "", qos=1, retain=True)
         for topic, payload in build_discovery_payloads(self.config).items():
             client.publish(topic, json.dumps(payload, separators=(",", ":")), qos=1, retain=True)
 
@@ -214,26 +205,20 @@ class MQTTPublisher:
         if not self._client or not self._connected:
             return
         measurement_online = bool(state.get("measurement_valid"))
-        presence_online = state.get("presence") in ("PRESENT", "ABSENT")
-        # Publish availabilities that are going OFFLINE before the state JSON:
+        # Publish an availability going OFFLINE before the state JSON:
         # otherwise consumers render the momentary OFF from the state payload
         # before the unavailable arrives, turning one drop into two flaps.
         if not measurement_online:
             self._client.publish(f"{self.config.base_topic}/measurement_availability", "offline", qos=1, retain=True)
-        if not presence_online:
-            self._client.publish(f"{self.config.base_topic}/presence_availability", "offline", qos=1, retain=True)
         self._client.publish(f"{self.config.base_topic}/state", json.dumps(state, allow_nan=False, separators=(",", ":")), qos=0, retain=True)
         if measurement_online:
             self._client.publish(f"{self.config.base_topic}/measurement_availability", "online", qos=1, retain=True)
-        if presence_online:
-            self._client.publish(f"{self.config.base_topic}/presence_availability", "online", qos=1, retain=True)
 
     def stop(self) -> None:
         if not self._client:
             return
         if self._connected:
             self._client.publish(f"{self.config.base_topic}/measurement_availability", "offline", qos=1, retain=True)
-            self._client.publish(f"{self.config.base_topic}/presence_availability", "offline", qos=1, retain=True)
             self._client.publish(f"{self.config.base_topic}/availability", "offline", qos=1, retain=True)
             self._client.disconnect()
         self._client.loop_stop()

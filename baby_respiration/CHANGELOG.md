@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.22
+
+- Entity consolidation: the derived binaries `breathing_detected` (= state `BREATHING`), `measurement_valid` (= state `BREATHING`/`NO_BREATHING_SIGNAL`), and `baby_in_crib` (= presence `PRESENT`) are removed — the two enum sensors are the single source of truth, and discovery cleanup messages delete the old entities from Home Assistant automatically. `breathing_rate_low` stays (its threshold logic is not derivable from state). The notification recipe in DOCS now uses the enums directly — update your automation accordingly.
+- Baby presence wears `mdi:teddy-bear`.
+
 ## 0.3.21
 
 - Entity organization: **Detector state** moves from the diagnostics section to the main sensors (it is the system's primary summary and the alert trigger), and both it and **Baby presence** declare `device_class: enum` with their option lists. Numeric diagnostics (signal RMS, SNR, video FPS, analysis window) gain `state_class: measurement` so Home Assistant keeps long-term statistics for trend tuning. No entities added or removed — the derived binary/sensor pairs (breathing⇄state, in-crib⇄presence, valid⇄state) are intentional automation ergonomics, not duplicates.
