@@ -13,7 +13,7 @@ An experimental, local-only detector that estimates respiration-like chest/abdom
    - **Camera** — paste the RTSP URL, press *Test connection*, and confirm the preview shows the crib. No camera handy? `demo://breathing` starts a synthetic scene.
    - **Breathing region** — drag a generous box over where your baby sleeps; the monitor scores small blocks inside it for breathing-band rhythm and measures from whichever block currently carries it, following the baby as they move.
 
-Everything entered in the wizard persists in the add-on's data and applies without a restart. The dashboard offers **Edit region**, **Camera**, and **MQTT** to change things later.
+Everything entered in the wizard persists in the add-on's data and applies without a restart. The dashboard offers **Edit region**, **Camera**, **MQTT**, **Pause**, and **Tuning** to change things later — all configuration lives in the panel; there is no add-on Configuration tab.
 
 The add-on details live in [`baby_respiration/`](baby_respiration/): [DOCS.md](baby_respiration/DOCS.md) covers entities, options, and limitations; [CHANGELOG.md](baby_respiration/CHANGELOG.md) tracks releases.
 
@@ -29,7 +29,7 @@ The conservative state machine distinguishes:
 | `NO_BREATHING_SIGNAL` | A previously calibrated, still-observable region lost periodic motion for the configured timeout. Means only that *this detector sees no signal*. |
 | `MEASUREMENT_INVALID` | Stream, image, stability, completeness, amplitude, or SNR is insufficient. |
 
-While invalid, MQTT marks the rate/breathing entities *unavailable* rather than reporting zero BPM or `OFF`. Automations must gate `baby_breathing_detected` on `baby_respiration_measurement_valid`, and must never be life-safety automations.
+While invalid, MQTT marks the rate entities *unavailable* rather than reporting zero BPM. The `baby_respiration_state` and `baby_presence` enum sensors are the single source of truth for automations — and no automation built on them may ever be life-safety.
 
 The same per-block periodicity scoring runs in two more places: inside the user's box every analysis window (to pick the block currently carrying breathing), and across the full frame after pickup-shaped disturbances (to verify crib occupancy for presence detection). Because it looks for the signal itself rather than a baby-shaped object, it works under IR night vision and blankets where object detectors struggle.
 
