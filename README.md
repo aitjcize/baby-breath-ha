@@ -12,7 +12,7 @@ An experimental, local-only detector that estimates respiration-like chest/abdom
 - **Co-sleeping is a specific hazard for this tool.** The monitor locks onto the strongest breathing-like motion inside the region you draw. If that region can ever include an adult, the monitor may report reassuring "breathing" from *them* regardless of the baby's state — a false sense of safety worse than no monitor at all. The region must contain only the space your baby can occupy.
 - **It does not make any sleep arrangement safe.** Follow your pediatrician's safe-sleep guidance. This tool is not a reason to deviate from it, and using it does not reduce the risks that guidance exists to prevent.
 - **Every camera and room is different.** Thresholds are scene-specific; expect to spend time validating against your own camera (lighting modes, sleep positions, clothing) before the readings mean anything. Until you have watched it behave correctly through several nights — including verifying it goes *quiet* on an empty bed — treat its output as noise.
-- **Provided as-is, without warranty of any kind.** The authors accept no liability for any harm arising from its use. If any of the above is unacceptable, do not use this software.
+- **Provided as-is, without warranty of any kind** ([MIT license](LICENSE)). The authors accept no liability for any harm arising from its use. If any of the above is unacceptable, do not use this software.
 
 ## Install as a Home Assistant add-on (recommended)
 
