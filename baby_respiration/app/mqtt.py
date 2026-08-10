@@ -100,7 +100,7 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
     state.update({
         "value_template": "{{ value_json.state }}",
         "device_class": "enum",
-        "options": ["BREATHING", "NO_BREATHING_SIGNAL", "MEASUREMENT_INVALID", "CRIB_EMPTY", "MONITORING_OFF"],
+        "options": ["BREATHING", "NO_BREATHING_SIGNAL", "MEASUREMENT_INVALID", "MOVING", "CRIB_EMPTY", "MONITORING_OFF"],
         "icon": "mdi:state-machine",
     })
     entities.append(("sensor", "baby_respiration_state", state))

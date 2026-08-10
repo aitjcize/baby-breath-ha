@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.28
+
+- New `MOVING` detector state: unmeasurable moments with visible movement in the region are benign — gross motion is itself evidence of well-being — so they no longer report as `MEASUREMENT_INVALID`. That state now strictly means *unmeasurable and still*, which makes the sustained-unmeasurable alert timer far higher-signal: it only accumulates for the combination that actually deserves a look, and any stir resets it. Brief stirs are still bridged as `BREATHING` by the reporting hold; `MOVING` surfaces for sustained activity (an awake baby past the 5-minute movement cap now shows `MOVING` instead of all-day `MEASUREMENT_INVALID` churn). The alarm path is untouched. Recommended automation in DOCS updated — do not alert on `MOVING`.
+
 ## 0.3.27
 
 - Recovery hold: a disturbance (a stir, a stream gap) corrupts the ~24 s analysis window, so the estimator is *expected* to stay invalid for up to a window after it ends — but the flat hold expired a few seconds before each re-lock, blipping `MEASUREMENT_INVALID` for 1–12 s after every stir (observed in telemetry). While the invalid stretch is caused by missing window data (movement, gaps), the hold now extends to one analysis window + 6 s past the last disrupted sample. Certification failures (no coherent region, unstable rhythm) still surface once the base hold ends, the whole overlay is capped at 5 minutes past the last actually-measured breath, and alarms punch through unchanged.

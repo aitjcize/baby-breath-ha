@@ -199,7 +199,23 @@ def test_movement_hold_is_bounded() -> None:
     while t < 400:
         state = classifier.update(moving, t).state
         t += 5.0
-    assert state == DetectorState.MEASUREMENT_INVALID  # capped at 5 min
+    # The BREATHING overlay is capped at 5 min; with movement still present
+    # the honest state is the benign MOVING, not a measurement problem.
+    assert state == DetectorState.MOVING
+
+
+def test_unmeasurable_with_movement_reports_moving() -> None:
+    """Cannot measure + visible movement = benign MOVING; the same failure
+    with a still region = MEASUREMENT_INVALID (the alert-worthy kind)."""
+    config = SignalConfig(baseline_required_duration=2, no_breath_timeout=1000, detection_hold_seconds=0)
+    classifier = ConservativeClassifier(config)
+    moving = RespirationEstimate(reason="excessive_motion", excessive_motion=True, motion_stability=0.3)
+    active = classifier.update(moving, 1.0)
+    assert active.state == DetectorState.MOVING  # no prior calibration needed
+    assert active.measurement_valid is False
+    assert active.breathing_detected is None
+    still = classifier.update(RespirationEstimate(reason="signal_snr_too_low"), 2.0)
+    assert still.state == DetectorState.MEASUREMENT_INVALID
 
 
 def test_hold_never_delays_the_alarm() -> None:

@@ -478,6 +478,7 @@ $("editCam").addEventListener("click",()=>{forced="camera";setView("wizard",2)})
 const STATES={
   BREATHING:{cls:"pill ok",lbl:"Breathing detected",hero:""},
   MEASUREMENT_INVALID:{cls:"pill warn",lbl:"Measurement unavailable",hero:"still"},
+  MOVING:{cls:"pill ok",lbl:"Baby moving",hero:"still"},
   NO_BREATHING_SIGNAL:{cls:"pill alert",lbl:"No breathing signal — check now",hero:"alert"},
   CRIB_EMPTY:{cls:"pill",lbl:"Crib empty — monitoring paused",hero:"still"},
   MONITORING_OFF:{cls:"pill",lbl:"Monitoring off",hero:"still"},
@@ -495,6 +496,8 @@ function renderDash(){
   let why=s.state==="BREATHING"?(s.rate_low?`Slower than your ${Math.round(s.low_rate_threshold)} BPM alert threshold`:""):prettyReason(s.reason);
   if(s.state==="BREATHING"&&s.reason&&s.reason.startsWith("holding_through_interruption"))why="Signal briefly interrupted — holding the last reading.";
   else if(s.state==="BREATHING"&&s.reason&&s.reason.startsWith("holding_through_movement"))why="Baby is moving — measurement paused, movement itself shows all is well.";
+  else if(s.state==="BREATHING"&&s.reason&&s.reason.startsWith("holding_through_recovery"))why="Re-measuring after a disturbance — holding the last reading.";
+  if(s.state==="MOVING")why="Movement in the monitored region — breathing can't be measured during motion, and movement itself shows all is well.";
   if(s.state==="CRIB_EMPTY")why="Monitoring resumes automatically when your baby is back.";
   else if(s.state==="MONITORING_OFF")why=prettyReason("monitoring_disabled");
   else if(s.scan&&s.scan.state==="running"&&s.scan.purpose==="presence")why="Checking whether the crib is occupied…";

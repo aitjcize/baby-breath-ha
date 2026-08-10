@@ -32,11 +32,12 @@ Settings persist across restarts and updates. Use **Edit region**, **Camera**, *
 | --- | --- |
 | `BREATHING` | Video quality is adequate and periodic in-range motion is present. |
 | `NO_BREATHING_SIGNAL` | A previously calibrated, still-observable region has lost periodic motion for the configured timeout — **and the baby is confirmed present**. It means only that *this detector sees no signal*. |
-| `MEASUREMENT_INVALID` | The stream, image quality, motion stability, or signal strength is insufficient to say anything. |
+| `MEASUREMENT_INVALID` | The stream, image quality, motion stability, or signal strength is insufficient to say anything — **and the region is still**. This is the only unmeasurable state worth an alert timer. |
+| `MOVING` | Movement in the monitored region prevents measurement. Benign: gross motion is itself evidence of well-being (a still baby is the concerning case, not a moving one). Not proof against every emergency — abnormal movement exists — but never treat it as a measurement problem. |
 | `CRIB_EMPTY` | Presence detection confirmed the crib is empty; monitoring is paused and resumes automatically. |
 | `MONITORING_OFF` | Monitoring switched off (panel button or `switch.baby_monitoring`); analysis is skipped and entities are unavailable. |
 
-Low signal-to-noise, a frozen stream, excess movement, and startup without calibration all fail toward `MEASUREMENT_INVALID`. While invalid, the rate and breathing entities are marked *unavailable* rather than reporting zero BPM or `OFF`.
+Low signal-to-noise, a frozen stream, and startup without calibration all fail toward `MEASUREMENT_INVALID`; unmeasurable moments with visible movement in the region report `MOVING` instead (brief stirs are bridged as `BREATHING` by the reporting hold and never surface at all). While not measuring, the rate and breathing entities are marked *unavailable* rather than reporting zero BPM or `OFF`.
 
 ## Presence detection
 
@@ -53,7 +54,7 @@ Presence has an honest `UNKNOWN` state (startup, prolonged verification failure)
 
 A single device is created with:
 
-- `sensor.baby_respiration_state` — the primary summary: `BREATHING` / `NO_BREATHING_SIGNAL` / `MEASUREMENT_INVALID` / `CRIB_EMPTY` / `MONITORING_OFF`
+- `sensor.baby_respiration_state` — the primary summary: `BREATHING` / `NO_BREATHING_SIGNAL` / `MEASUREMENT_INVALID` / `MOVING` / `CRIB_EMPTY` / `MONITORING_OFF`
 - `sensor.baby_respiration_rate` — breaths per minute (unavailable while not measuring)
 - `sensor.baby_presence` — `PRESENT` / `ABSENT` / `CHECKING` / `UNKNOWN`
 - `binary_sensor.baby_breathing_rate_low` — on while the measured rate sits below your configured threshold (device class *problem*; unavailable while not measuring)
@@ -64,10 +65,10 @@ Everything else is derivable from the two enum sensors — breathing detected is
 
 ```yaml
 triggers:
-  - trigger: state                 # clear video, no breathing rhythm
+  - trigger: state                 # clear video, no breathing rhythm — the primary alert
     entity_id: sensor.baby_respiration_state
     to: "NO_BREATHING_SIGNAL"
-  - trigger: state                 # cannot measure for a sustained period
+  - trigger: state                 # unmeasurable AND still for a sustained period
     entity_id: sensor.baby_respiration_state
     to: "MEASUREMENT_INVALID"
     for: "00:03:00"
@@ -83,6 +84,8 @@ conditions:
     entity_id: switch.baby_monitoring
     state: "on"
 ```
+
+Do **not** add a trigger on `MOVING`: movement in the region is direct evidence of well-being, so it is deliberately excluded from the sustained-unmeasurable timer — `MEASUREMENT_INVALID` only accumulates while the region is unmeasurable *and still*, which is exactly the combination that deserves a look. Any stir resets the timer. If you also want to know when the detector concludes the bed emptied mid-sleep (either it is genuinely empty or the detector has lost the baby), add an optional trigger on `CRIB_EMPTY` with `for: "00:02:00"` — but put it in a separate automation without the `PRESENT` condition, which would otherwise suppress it.
 
 ## Bed-exit warning
 

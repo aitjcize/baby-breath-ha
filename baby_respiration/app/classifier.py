@@ -11,7 +11,12 @@ from app.presence import PresenceState
 class DetectorState(str, Enum):
     BREATHING = "BREATHING"
     NO_BREATHING_SIGNAL = "NO_BREATHING_SIGNAL"
+    # Cannot measure AND the region is still — the only unmeasurable state
+    # worth an alert timer.
     MEASUREMENT_INVALID = "MEASUREMENT_INVALID"
+    # Cannot measure BECAUSE the region is visibly moving: gross motion is
+    # direct evidence of well-being, so this is benign, not concerning.
+    MOVING = "MOVING"
     CRIB_EMPTY = "CRIB_EMPTY"
 
 
@@ -107,6 +112,7 @@ class ConservativeClassifier:
             self._movement_refresh_since = None
             self._recovery_until = None
             return raw
+        movement = estimate.excessive_motion or 0.0 < estimate.motion_stability < 0.85
         if (
             hold > 0
             and self._held is not None
@@ -117,7 +123,6 @@ class ConservativeClassifier:
             # Gross body movement makes the measurement fail while proving the
             # baby is alive — stronger vitality evidence than a rhythm. Refresh
             # the hold through movement (bounded), instead of expiring it.
-            movement = estimate.excessive_motion or 0.0 < estimate.motion_stability < 0.85
             if movement or estimate.reason in _WINDOW_DISRUPTED_REASONS:
                 self._recovery_until = (
                     now + self.config.analysis_window_duration + RECOVERY_HOLD_MARGIN
@@ -152,6 +157,19 @@ class ConservativeClassifier:
                     f"holding_through_recovery:{raw.reason}",
                     self._held.calibrated,
                 )
+        if raw.state == DetectorState.MEASUREMENT_INVALID and movement:
+            # Unmeasurable, but the region is visibly moving — movement is
+            # itself evidence of well-being, so report the benign state and
+            # reserve MEASUREMENT_INVALID for a STILL region that cannot be
+            # measured. This also keeps an active awake baby (past the
+            # movement-hold cap) from reading as a measurement problem.
+            return Classification(
+                DetectorState.MOVING,
+                False,
+                None,
+                f"movement_in_region:{raw.reason}",
+                raw.calibrated,
+            )
         return raw
 
     def _classify(

@@ -37,9 +37,10 @@ The conservative state machine distinguishes:
 | --- | --- |
 | `BREATHING` | Signal quality is adequate and periodic in-range motion is present. |
 | `NO_BREATHING_SIGNAL` | A previously calibrated, still-observable region lost periodic motion for the configured timeout. Means only that *this detector sees no signal*. |
-| `MEASUREMENT_INVALID` | Stream, image, stability, completeness, amplitude, or SNR is insufficient. |
+| `MEASUREMENT_INVALID` | Stream, image, stability, completeness, amplitude, or SNR is insufficient — and the region is still. |
+| `MOVING` | Movement in the region prevents measurement. Benign: gross motion is itself evidence of well-being; a still baby is the concerning case, not a moving one. |
 
-While invalid, MQTT marks the rate entities *unavailable* rather than reporting zero BPM. The `baby_respiration_state` and `baby_presence` enum sensors are the single source of truth for automations — and no automation built on them may ever be life-safety.
+While not measuring, MQTT marks the rate entities *unavailable* rather than reporting zero BPM. The `baby_respiration_state` and `baby_presence` enum sensors are the single source of truth for automations — and no automation built on them may ever be life-safety.
 
 The same per-block periodicity scoring runs in two more places: inside the user's box every analysis window (to pick the block currently carrying breathing), and across the full frame after pickup-shaped disturbances (to verify crib occupancy for presence detection). Because it looks for the signal itself rather than a baby-shaped object, it works under IR night vision and blankets where object detectors struggle.
 
