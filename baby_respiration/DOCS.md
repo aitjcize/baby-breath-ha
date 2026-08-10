@@ -70,7 +70,7 @@ triggers:
   - trigger: state                 # cannot measure for a sustained period
     entity_id: sensor.baby_respiration_state
     to: "MEASUREMENT_INVALID"
-    for: "00:05:00"
+    for: "00:03:00"
   - trigger: state                 # measured rate below your threshold
     entity_id: binary_sensor.baby_breathing_rate_low
     to: "on"
