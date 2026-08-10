@@ -45,6 +45,9 @@ class RuntimeSettings:
     mqtt_port: int = 1883
     mqtt_username: str = ""
     mqtt_password: str = ""
+    # Empty string = use the built-in default topic naming.
+    mqtt_base_topic: str = ""
+    mqtt_discovery_prefix: str = ""
     monitoring_enabled: bool = True
     # Panel-set detection tuning; keys mirror SignalConfig fields and
     # override the add-on option defaults. Empty dict = all defaults.
@@ -110,6 +113,8 @@ class SettingsStore:
             mqtt_port=port,
             mqtt_username=str(raw.get("mqtt_username", "") or ""),
             mqtt_password=str(raw.get("mqtt_password", "") or ""),
+            mqtt_base_topic=str(raw.get("mqtt_base_topic", "") or ""),
+            mqtt_discovery_prefix=str(raw.get("mqtt_discovery_prefix", "") or ""),
             monitoring_enabled=bool(raw.get("monitoring_enabled", True)),
             tuning=dict(raw.get("tuning") or {}),
         )
@@ -128,6 +133,8 @@ class SettingsStore:
         mqtt_port: int | None = None,
         mqtt_username: str | None = None,
         mqtt_password: str | None = None,
+        mqtt_base_topic: str | None = None,
+        mqtt_discovery_prefix: str | None = None,
         monitoring_enabled: bool | None = None,
         tuning: dict | None = None,
     ) -> RuntimeSettings:
@@ -152,6 +159,10 @@ class SettingsStore:
                 merged = replace(merged, mqtt_username=mqtt_username)
             if mqtt_password is not None:
                 merged = replace(merged, mqtt_password=mqtt_password)
+            if mqtt_base_topic is not None:
+                merged = replace(merged, mqtt_base_topic=mqtt_base_topic.strip())
+            if mqtt_discovery_prefix is not None:
+                merged = replace(merged, mqtt_discovery_prefix=mqtt_discovery_prefix.strip())
             if monitoring_enabled is not None:
                 merged = replace(merged, monitoring_enabled=bool(monitoring_enabled))
             if tuning is not None:
@@ -168,6 +179,8 @@ class SettingsStore:
             "mqtt_port": settings.mqtt_port,
             "mqtt_username": settings.mqtt_username,
             "mqtt_password": settings.mqtt_password,
+            "mqtt_base_topic": settings.mqtt_base_topic,
+            "mqtt_discovery_prefix": settings.mqtt_discovery_prefix,
             "monitoring_enabled": settings.monitoring_enabled,
             "tuning": settings.tuning,
         }

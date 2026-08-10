@@ -1,6 +1,6 @@
 [project]
 name = "baby-breath-ha"
-version = "0.3.19"
+version = "0.3.20"
 description = "Experimental local video respiration signal detector with Home Assistant MQTT discovery"
 readme = "README.md"
 requires-python = ">=3.11"

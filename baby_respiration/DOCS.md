@@ -47,7 +47,7 @@ The camera is always on, but the baby is not always in the crib. Rather than an 
 - After a pickup-shaped disturbance with no signal, the add-on runs full-frame breathing scans: breathing anywhere → *present* (if it is outside your configured region, the panel suggests enlarging or moving your box); two clean empty scans → *absent*, monitoring pauses.
 - Another disturbance (baby returned) triggers re-verification, and monitoring resumes on its own.
 
-Presence has an honest `UNKNOWN` state (startup, prolonged verification failure). Known limitation: if a caregiver rearranges bedding such that breathing becomes unmeasurable *anywhere* in the frame, absence can be inferred wrongly — no camera-based method (ML included) can see through that; consider a gentle notification on prolonged `UNKNOWN`/`ABSENT` during expected sleep hours. Disable the feature with the `presence_detection` option to always treat the crib as occupied.
+Presence has an honest `UNKNOWN` state (startup, prolonged verification failure). Known limitation: if a caregiver rearranges bedding such that breathing becomes unmeasurable *anywhere* in the frame, absence can be inferred wrongly — no camera-based method (ML included) can see through that; consider a gentle notification on prolonged `UNKNOWN`/`ABSENT` during expected sleep hours. Disable the feature in the panel's Tuning card to always treat the crib as occupied.
 
 ## Entities
 
@@ -97,26 +97,12 @@ Monitoring only makes sense while the baby is asleep. Automate `switch.baby_moni
 
 While off, the camera stream is fully disconnected — decoding it is the largest CPU cost, bigger than the analysis itself — and the panel shows a still preview refreshed every ~30 s. Re-enabling reconnects and starts a fresh calibration.
 
-## Detection tuning in the panel
+## Configuration lives in the panel
 
-The dashboard's **Tuning** card adjusts the detection parameters (breathing band, confidence, low-rate threshold, no-breath timeout, detection hold, minimum amplitude, presence detection) **live** — no restart, no recalibration. Blank fields fall back to the add-on option defaults below; **Use defaults** clears all overrides. Panel values win over add-on options.
+There is no add-on Configuration tab — everything is set in the panel and persists in the add-on's private data:
 
-## Options
-
-| Option | Purpose |
-| --- | --- |
-| `processing_fps` | Analyzed frames per second; CPU scales linearly. 4 suffices for the default 90 BPM band; keep it above 2× `max_bpm` in Hz. |
-| `target_processing_width` | Analysis resolution; CPU scales with its square (320→256 ≈ −36%). Lower widths shrink measured amplitudes proportionally. |
-| `min_bpm` / `max_bpm` | The breathing band. Newborns commonly breathe 30–60 BPM. |
-| `minimum_confidence` | Quality score required before motion counts as breathing. |
-| `no_breath_timeout` | Seconds of missing signal (while calibrated and observable) before `NO_BREATHING_SIGNAL`. |
-| `presence_detection` | Pause monitoring when the crib is confirmed empty. Off = always treat the crib as occupied. |
-| `detection_hold_seconds` | Grace period: established breathing keeps reporting through brief dropouts (stream hiccups, twitch-corrupted windows) instead of flapping to unavailable. Internal alarm timers keep running from the true loss, so `NO_BREATHING_SIGNAL` is never delayed and punches through immediately. |
-| `low_rate_threshold_bpm` | Flags `baby_breathing_rate_low` when the measured rate is below this (0 disables). Must exceed `min_bpm` — slower rates are unmeasurable and surface as signal loss instead. Small hysteresis (+2 BPM to clear) prevents flapping; add a `for:` duration in your automation. |
-| `minimum_signal_rms` | Band-passed motion amplitude (px RMS) required before the signal counts as observable. A clearly concentrated spectral peak with strong SNR overrides this down to 30% of the value — unambiguous rhythm is not vetoed for being small. |
-| `mqtt_base_topic` / `mqtt_discovery_prefix` | Topic naming for power users. The broker itself is chosen in the panel's Home Assistant step. |
-
-The camera URL and measurement region are set in the panel, not in the options, and are stored in the add-on's private data.
+- **Tuning card** (dashboard): breathing band, minimum confidence, low-rate alert threshold, no-breath timeout, detection hold, minimum amplitude, presence detection, processing FPS, processing width, log level. Detection changes apply instantly; FPS/width changes briefly recalibrate. Blank fields use the built-in defaults; **Use defaults** clears all overrides.
+- **MQTT screen**: broker choice plus base topic and discovery prefix (blank = defaults). Note: changing the base topic leaves stale retained discovery messages on the old topic — remove the old device from the MQTT integration if you rename.
 
 ## Tips and limitations
 

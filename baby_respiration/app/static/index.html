@@ -127,7 +127,7 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
 #wave{width:100%;height:150px;display:block}
 .tune-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .tune-grid label{color:var(--ink-faint);font-size:12px}
-.tune-grid input{box-sizing:border-box;width:100%;margin-top:4px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel-deep);color:var(--ink);font:14px var(--font-mono)}
+.tune-grid input,.tune-grid select{box-sizing:border-box;width:100%;margin-top:4px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel-deep);color:var(--ink);font:14px var(--font-mono)}
 .camcard .actions{margin-top:14px;gap:8px}.camcard .actions button{padding:9px 13px;font-size:13px;white-space:nowrap}
 .diag{margin-top:18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px}
 .stat{background:var(--panel-deep);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px}
@@ -223,6 +223,10 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
         </div>
       </div>
       <label class="check" style="margin-top:8px"><input type="radio" name="mqmode" value="disabled"><span><strong>No MQTT</strong> — readings stay in this panel only</span></label>
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+        <input type="text" id="mqTopic" placeholder="base topic (default: baby_respiration)" style="flex:1;width:auto" autocomplete="off" spellcheck="false">
+        <input type="text" id="mqPrefix" placeholder="discovery prefix (default: homeassistant)" style="flex:1;width:auto" autocomplete="off" spellcheck="false">
+      </div>
       <p class="msg" id="mqMsg" style="min-height:22px;margin:12px 0 0" role="status"></p>
       <div class="actions">
         <button class="btn-ghost" id="backTo3">Back</button>
@@ -273,7 +277,7 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
         <div class="diag" id="diag"></div>
         <div class="card reveal" id="tuneCard" hidden style="margin-top:18px">
           <h2 style="font-size:16px">Detection tuning</h2>
-          <p class="hint" style="margin:4px 0 12px">Blank fields use the add-on defaults (shown as placeholders). Changes apply immediately — no restart, no recalibration.</p>
+          <p class="hint" style="margin:4px 0 12px">Blank fields use the built-in defaults (shown as placeholders). Detection changes apply instantly; changing FPS or width briefly recalibrates.</p>
           <div class="tune-grid" id="tuneGrid"></div>
           <label class="check" style="margin-top:12px"><input type="checkbox" id="tunePresence"><span>Presence detection — pause monitoring when the crib is confirmed empty</span></label>
           <div class="actions">
@@ -404,8 +408,8 @@ $("saveRegion").addEventListener("click",async()=>{
 $("redetect").addEventListener("click",()=>{forced="region";setView("wizard",3)});
 $("editMqtt").addEventListener("click",()=>{forced="mqtt";setView("wizard",4)});
 $("monitorBtn").addEventListener("click",()=>{if(!status)return;post("api/settings",{monitoring:status.monitoring===false}).catch(()=>{})});
-const TUNE_FIELDS=[["min_bpm","Min BPM"],["max_bpm","Max BPM"],["minimum_confidence","Min confidence %"],["low_rate_threshold_bpm","Low-rate alert BPM"],["no_breath_timeout","No-breath timeout s"],["detection_hold_seconds","Detection hold s"],["minimum_signal_rms","Min amplitude px"]];
-$("tuneGrid").innerHTML=TUNE_FIELDS.map(([k,n])=>`<label>${n}<input type="text" id="tune_${k}" inputmode="decimal" autocomplete="off"></label>`).join("");
+const TUNE_FIELDS=[["min_bpm","Min BPM"],["max_bpm","Max BPM"],["minimum_confidence","Min confidence %"],["low_rate_threshold_bpm","Low-rate alert BPM"],["no_breath_timeout","No-breath timeout s"],["detection_hold_seconds","Detection hold s"],["minimum_signal_rms","Min amplitude px"],["processing_fps","Processing FPS"],["target_processing_width","Processing width px"]];
+$("tuneGrid").innerHTML=TUNE_FIELDS.map(([k,n])=>`<label>${n}<input type="text" id="tune_${k}" inputmode="decimal" autocomplete="off"></label>`).join("")+`<label>Log level<select id="tune_log_level"><option value="">default</option><option>debug</option><option>info</option><option>warning</option><option>error</option></select></label>`;
 function fillTuning(){
   const t=(status&&status.tuning)||{overrides:{},effective:{},defaults:{}};
   for(const [k]of TUNE_FIELDS){
@@ -414,10 +418,12 @@ function fillTuning(){
     el.placeholder=t.defaults[k]!==undefined?t.defaults[k]:"";
   }
   $("tunePresence").checked=t.effective.presence_enabled!==false;
+  $("tune_log_level").value="log_level" in t.overrides?t.overrides.log_level:"";
 }
 $("tuneBtn").addEventListener("click",()=>{const card=$("tuneCard");card.hidden=!card.hidden;if(!card.hidden){fillTuning();$("tuneMsg").textContent=""}});
 $("tuneSave").addEventListener("click",async()=>{
   const tuning={presence_enabled:$("tunePresence").checked},msg=$("tuneMsg");
+  if($("tune_log_level").value)tuning.log_level=$("tune_log_level").value;
   for(const [k]of TUNE_FIELDS){
     const raw=$("tune_"+k).value.trim();
     if(raw==="")continue;
@@ -446,7 +452,7 @@ function prefillMqtt(){
 document.querySelectorAll('input[name=mqmode]').forEach(el=>el.addEventListener("change",()=>{$("mqFields").hidden=document.querySelector('input[name=mqmode]:checked').value!=="custom"}));
 $("saveMqtt").addEventListener("click",async()=>{
   const mode=document.querySelector('input[name=mqmode]:checked').value,msg=$("mqMsg");
-  const body={mode};
+  const body={mode,base_topic:$("mqTopic").value.trim(),discovery_prefix:$("mqPrefix").value.trim()};
   if(mode==="custom"){
     body.host=$("mqHost").value.trim();body.port=parseInt($("mqPort").value,10)||1883;
     body.username=$("mqUser").value;body.password=$("mqPass").value;

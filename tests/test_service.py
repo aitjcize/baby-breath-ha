@@ -126,6 +126,20 @@ def test_tuning_overrides_apply_live(tmp_path: Path) -> None:
     service._apply_pending()
     assert service._signal.low_rate_threshold_bpm == service.config.signal.low_rate_threshold_bpm
 
+    # camera tuning rebuilds the pipeline live
+    service.apply_settings(tuning={"processing_fps": 4, "target_processing_width": 256})
+    service._apply_pending()
+    assert service._camera.processing_fps == 4
+    assert service.extractor.camera.target_processing_width == 256
+    with _pytest.raises(ValueError):  # Nyquist: max_bpm 120 needs fps > 4
+        service.apply_settings(tuning={"processing_fps": 4, "max_bpm": 120})
+
+    # MQTT topic override flows into the effective broker config
+    service.apply_settings(mqtt={"base_topic": "nursery"})
+    assert service._effective_mqtt().base_topic == "nursery"
+    service.apply_settings(mqtt={"base_topic": ""})
+    assert service._effective_mqtt().base_topic == "baby_respiration"
+
 
 def test_rate_low_flag_with_hysteresis(tmp_path: Path) -> None:
     service = make_service(tmp_path)  # default threshold 20

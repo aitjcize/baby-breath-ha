@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.20
+
+- The add-on Configuration tab is gone — the panel is the single source of configuration. Processing FPS, processing width, and log level join the Tuning card (FPS/width changes briefly recalibrate; the rest applies instantly), and the MQTT base topic / discovery prefix move to the MQTT screen. Built-in defaults apply wherever the panel has no override; legacy add-on option values are still read as defaults if present.
+
 ## 0.3.19
 
 - Detection tuning moved into the panel: a **Tuning** card on the dashboard adjusts the breathing band, minimum confidence, low-rate alert threshold, no-breath timeout, detection hold, minimum amplitude, and presence detection — applied live with no restart and no recalibration. Add-on options remain as defaults; blank fields inherit them, and **Use defaults** clears overrides.

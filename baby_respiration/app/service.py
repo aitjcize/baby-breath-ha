@@ -27,8 +27,11 @@ LOGGER = logging.getLogger(__name__)
 _WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi", "roi_suggestion", "mqtt", "active_block", "invalid_breakdown", "tuning")
 
 PROBE_PREVIEW_WIDTH = 640
-# Panel-tunable SignalConfig fields with their allowed ranges.
+# Panel-tunable fields with their allowed ranges (processing_fps and
+# target_processing_width live on CameraConfig; the rest on SignalConfig).
 TUNABLE_RANGES = {
+    "processing_fps": (4, 15),
+    "target_processing_width": (160, 640),
     "min_bpm": (6, 60),
     "max_bpm": (20, 120),
     "minimum_confidence": (0, 100),
@@ -37,6 +40,8 @@ TUNABLE_RANGES = {
     "low_rate_threshold_bpm": (0, 60),
     "detection_hold_seconds": (0, 60),
 }
+CAMERA_TUNABLES = ("processing_fps", "target_processing_width")
+LOG_LEVELS = ("debug", "info", "warning", "error")
 # While paused the stream is disconnected (decoding it is the dominant CPU
 # cost); a short-lived connection refreshes the panel preview at this cadence.
 PAUSED_PREVIEW_INTERVAL = 30.0
@@ -111,7 +116,13 @@ class BabyRespirationService:
     ) -> CameraConfig:
         url = self._clean_url(stored_url) or self._clean_url(base.rtsp_url)
         roi = stored_roi if stored_roi is not None else base.roi
-        return replace(base, rtsp_url=url, roi=roi)
+        tuning = self.settings.get().tuning
+        overrides = {}
+        if "processing_fps" in tuning:
+            overrides["processing_fps"] = float(tuning["processing_fps"])
+        if "target_processing_width" in tuning:
+            overrides["target_processing_width"] = int(tuning["target_processing_width"])
+        return replace(base, rtsp_url=url, roi=roi, **overrides)
 
     def _effective_mqtt(self):
         """Broker resolution: UI choice first, then whatever the config offers.
@@ -122,7 +133,11 @@ class BabyRespirationService:
         network; "disabled" turns publishing off.
         """
         stored = self.settings.get()
-        base = self.config.mqtt
+        base = replace(
+            self.config.mqtt,
+            base_topic=stored.mqtt_base_topic or self.config.mqtt.base_topic,
+            discovery_prefix=stored.mqtt_discovery_prefix or self.config.mqtt.discovery_prefix,
+        )
         if stored.mqtt_mode == "custom":
             return replace(
                 base,
@@ -141,7 +156,7 @@ class BabyRespirationService:
         overrides = {
             key: value
             for key, value in self.settings.get().tuning.items()
-            if key in TUNABLE_RANGES or key == "presence_enabled"
+            if (key in TUNABLE_RANGES and key not in CAMERA_TUNABLES) or key == "presence_enabled"
         }
         return replace(self.config.signal, **overrides) if overrides else self.config.signal
 
@@ -151,6 +166,12 @@ class BabyRespirationService:
             if key == "presence_enabled":
                 cleaned[key] = bool(value)
                 continue
+            if key == "log_level":
+                level = str(value).lower()
+                if level not in LOG_LEVELS:
+                    raise ValueError(f"log_level must be one of {LOG_LEVELS}")
+                cleaned[key] = level
+                continue
             if key not in TUNABLE_RANGES:
                 raise ValueError(f"unknown tuning field: {key}")
             low, high = TUNABLE_RANGES[key]
@@ -158,10 +179,12 @@ class BabyRespirationService:
             if not low <= number <= high:
                 raise ValueError(f"{key} must be between {low} and {high}")
             cleaned[key] = number
-        candidate = replace(self.config.signal, **{k: v for k, v in cleaned.items() if k != "presence_enabled"})
+        signal_fields = {k: v for k, v in cleaned.items() if k in TUNABLE_RANGES and k not in CAMERA_TUNABLES}
+        candidate = replace(self.config.signal, **signal_fields)
+        fps = float(cleaned.get("processing_fps", self.config.camera.processing_fps))
         if not 0 < candidate.min_bpm < candidate.max_bpm:
             raise ValueError("min_bpm must be below max_bpm")
-        if self._camera.processing_fps < 2 * candidate.max_bpm / 60:
+        if fps <= 2 * candidate.max_bpm / 60:
             raise ValueError("max_bpm too high for the processing frame rate (Nyquist)")
         return cleaned
 
@@ -242,7 +265,15 @@ class BabyRespirationService:
         if mqtt is not None:
             if not isinstance(mqtt, dict):
                 raise ValueError("mqtt must be an object")
-            allowed = {"mqtt_mode": "mode", "mqtt_host": "host", "mqtt_port": "port", "mqtt_username": "username", "mqtt_password": "password"}
+            allowed = {
+                "mqtt_mode": "mode",
+                "mqtt_host": "host",
+                "mqtt_port": "port",
+                "mqtt_username": "username",
+                "mqtt_password": "password",
+                "mqtt_base_topic": "base_topic",
+                "mqtt_discovery_prefix": "discovery_prefix",
+            }
             for store_key, payload_key in allowed.items():
                 if payload_key in mqtt:
                     update[store_key] = mqtt[payload_key]
@@ -282,7 +313,6 @@ class BabyRespirationService:
         self.mqtt.start()
         if self._monitoring:
             self.source.start()
-        interval = 1.0 / self._camera.processing_fps
         next_tick = time.monotonic()
         last_publish = 0.0
 
@@ -292,6 +322,7 @@ class BabyRespirationService:
                 if run_seconds is not None and now - started >= run_seconds:
                     break
                 self._apply_pending()
+                interval = 1.0 / self._camera.processing_fps
                 snapshot = self.source.snapshot()
                 observation_added = False
 
@@ -440,15 +471,34 @@ class BabyRespirationService:
         if not pending:
             return
         if "tuning" in pending:
+            tuning = self.settings.get().tuning
             new_signal = self._effective_signal()
             if new_signal != self._signal:
-                LOGGER.info("applying tuning overrides: %s", self.settings.get().tuning or "defaults")
+                LOGGER.info("applying tuning overrides: %s", tuning or "defaults")
                 self._signal = new_signal
                 self.extractor.signal = new_signal
                 self.estimator.config = new_signal
                 self.classifier.config = new_signal
                 self.scanner.signal = new_signal
                 self.presence.enabled = new_signal.presence_enabled
+            stored_now = self.settings.get()
+            new_camera = self._effective_camera(self.config.camera, stored_now.rtsp_url, stored_now.roi)
+            if (new_camera.processing_fps, new_camera.target_processing_width) != (
+                self._camera.processing_fps,
+                self._camera.target_processing_width,
+            ):
+                LOGGER.info(
+                    "applying camera tuning: fps=%s width=%s",
+                    new_camera.processing_fps,
+                    new_camera.target_processing_width,
+                )
+                self._camera = new_camera
+                self.scanner.cancel()
+                self.extractor = DenseOpticalFlowExtractor(self._camera, self._signal)
+                self.estimator = RespirationEstimator(self._camera, self._signal)
+                self.classifier.reset()
+            if "log_level" in tuning:
+                logging.getLogger().setLevel(getattr(logging, str(tuning["log_level"]).upper(), logging.INFO))
         if "monitoring_enabled" in pending:
             enabled = bool(pending["monitoring_enabled"])
             if enabled != self._monitoring:
@@ -605,11 +655,18 @@ class BabyRespirationService:
             self._paused_preview_busy = False
 
     def _tuning_status(self) -> dict[str, Any]:
-        fields = list(TUNABLE_RANGES) + ["presence_enabled"]
+        signal_fields = [f for f in TUNABLE_RANGES if f not in CAMERA_TUNABLES] + ["presence_enabled"]
+        effective = {field: getattr(self._signal, field) for field in signal_fields}
+        defaults = {field: getattr(self.config.signal, field) for field in signal_fields}
+        for field in CAMERA_TUNABLES:
+            effective[field] = getattr(self._camera, field)
+            defaults[field] = getattr(self.config.camera, field)
+        effective["log_level"] = logging.getLevelName(logging.getLogger().getEffectiveLevel()).lower()
+        defaults["log_level"] = self.config.log_level.lower()
         return {
             "overrides": self.settings.get().tuning,
-            "effective": {field: getattr(self._signal, field) for field in fields},
-            "defaults": {field: getattr(self.config.signal, field) for field in fields},
+            "effective": effective,
+            "defaults": defaults,
         }
 
     def _write_telemetry(self, status: dict[str, Any], estimate: RespirationEstimate, presence_value: str) -> None:
