@@ -30,6 +30,15 @@ def test_discovery_payloads_are_valid_and_include_required_entities() -> None:
     switch = next(payload for payload in payloads.values() if payload["object_id"] == "baby_monitoring")
     assert switch["command_topic"] == "baby_respiration/monitoring/set"
 
+    state = next(payload for payload in payloads.values() if payload["object_id"] == "baby_respiration_state")
+    assert "entity_category" not in state  # primary, not diagnostic
+    assert state["device_class"] == "enum"
+    assert "MONITORING_OFF" in state["options"]
+
+    snr = next(payload for payload in payloads.values() if payload["object_id"] == "baby_respiration_snr")
+    assert snr["entity_category"] == "diagnostic"
+    assert snr["state_class"] == "measurement"
+
 
 def test_availability_publishes_before_state_when_going_offline() -> None:
     from app.mqtt import MQTTPublisher

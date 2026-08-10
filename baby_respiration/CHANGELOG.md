@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.21
+
+- Entity organization: **Detector state** moves from the diagnostics section to the main sensors (it is the system's primary summary and the alert trigger), and both it and **Baby presence** declare `device_class: enum` with their option lists. Numeric diagnostics (signal RMS, SNR, video FPS, analysis window) gain `state_class: measurement` so Home Assistant keeps long-term statistics for trend tuning. No entities added or removed — the derived binary/sensor pairs (breathing⇄state, in-crib⇄presence, valid⇄state) are intentional automation ergonomics, not duplicates.
+
 ## 0.3.20
 
 - The add-on Configuration tab is gone — the panel is the single source of configuration. Processing FPS, processing width, and log level join the Tuning card (FPS/width changes briefly recalibrate; the rest applies instantly), and the MQTT base topic / discovery prefix move to the MQTT screen. Built-in defaults apply wherever the panel has no override; legacy add-on option values are still read as defaults if present.

@@ -83,8 +83,22 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
     })
     entities.append(("binary_sensor", "baby_breathing_rate_low", rate_low))
 
+    state = common("Detector state", "baby_respiration_state")
+    state.update({
+        "value_template": "{{ value_json.state }}",
+        "device_class": "enum",
+        "options": ["BREATHING", "NO_BREATHING_SIGNAL", "MEASUREMENT_INVALID", "CRIB_EMPTY", "MONITORING_OFF"],
+        "icon": "mdi:state-machine",
+    })
+    entities.append(("sensor", "baby_respiration_state", state))
+
     presence = common("Baby presence", "baby_presence")
-    presence.update({"value_template": "{{ value_json.presence }}", "icon": "mdi:crib"})
+    presence.update({
+        "value_template": "{{ value_json.presence }}",
+        "device_class": "enum",
+        "options": ["PRESENT", "ABSENT", "CHECKING", "UNKNOWN"],
+        "icon": "mdi:crib",
+    })
     entities.append(("sensor", "baby_presence", presence))
 
     in_crib = common("Baby in crib", "baby_in_crib", presence_availability)
@@ -98,7 +112,6 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
     entities.append(("binary_sensor", "baby_in_crib", in_crib))
 
     diagnostics = {
-        "baby_respiration_state": ("Detector state", "state", None, "mdi:state-machine"),
         "baby_respiration_signal_rms": ("Signal RMS", "signal_rms", "px", "mdi:chart-bell-curve"),
         "baby_respiration_video_fps": ("Video FPS", "estimated_fps", "fps", "mdi:video"),
         "baby_respiration_analysis_window": ("Analysis window", "window_seconds", "s", "mdi:timeline-clock"),
@@ -110,7 +123,9 @@ def build_discovery_payloads(config: MQTTConfig) -> dict[str, dict[str, Any]]:
         payload = common(name, object_id)
         payload.update({"value_template": f"{{{{ value_json.{field} }}}}", "icon": icon, "entity_category": "diagnostic"})
         if unit:
+            # Numeric diagnostics get long-term statistics for trend tuning.
             payload["unit_of_measurement"] = unit
+            payload["state_class"] = "measurement"
         entities.append(("sensor", object_id, payload))
 
     excessive = common("Excessive motion", "baby_respiration_excessive_motion")
