@@ -25,6 +25,12 @@ def test_discovery_payloads_are_valid_and_include_required_entities() -> None:
     removed = {"baby_breathing_detected", "baby_respiration_measurement_valid", "baby_in_crib"}
     assert not removed & object_ids  # derived binaries consolidated into the enums
 
+    from app.mqtt import REMOVED_ENTITIES
+    cleanup_ids = {object_id for _, object_id in REMOVED_ENTITIES}
+    # the state sensor is recreated (cleanup + fresh config) to shed the
+    # registry's sticky diagnostic category; it must still be discovered
+    assert "baby_respiration_state" in cleanup_ids and "baby_respiration_state" in object_ids
+
     presence = next(payload for payload in payloads.values() if payload["object_id"] == "baby_presence")
     assert presence["icon"] == "mdi:teddy-bear"
 

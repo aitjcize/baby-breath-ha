@@ -1,5 +1,5 @@
 name: Baby Respiration Monitor
-version: "0.3.23"
+version: "0.3.24"
 slug: baby_respiration
 description: Experimental camera breathing-motion monitor — a secondary monitor, never a medical or life-safety device
 url: https://github.com/aitjcize/baby-breath-ha

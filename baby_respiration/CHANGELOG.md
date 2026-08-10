@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.24
+
+- Detector state actually lands in the Sensors section now: Home Assistant's registry keeps a previously-set `entity_category` when an updated discovery payload merely omits it, so the entity is deleted and immediately re-created on connect (same entity_id — history and automations unaffected).
+
 ## 0.3.23
 
 - Warm start: the last locked breathing rate is persisted (refreshed every 30 s while locked) and restored after a restart within 10 minutes, enabling the relaxed re-lock floors and rate-continuity escape for a 2-minute window. A redeploy during a shallow-breathing phase previously forced full cold-start hardening and took ~3 minutes to re-lock (observed); a warm restart re-locks like a brief interruption instead. An empty bed was never locked, so cold-start noise defenses are unchanged.

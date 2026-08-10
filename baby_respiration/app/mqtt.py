@@ -11,12 +11,17 @@ from app.config import MQTTConfig
 
 LOGGER = logging.getLogger(__name__)
 DEVICE_ID = "baby_respiration_detector"
-# Entities dropped from the schema; an empty retained payload on their config
-# topics tells Home Assistant to delete them.
+# Config topics that get an empty retained payload before discovery publishes.
+# The first three are entities dropped from the schema. The state sensor is
+# listed to force a delete-and-recreate: HA's registry treats an omitted
+# entity_category as "no opinion" and keeps the old diagnostic category
+# forever, so moving it to the main Sensors section needs one recreation
+# (same entity_id, so history and automations are unaffected).
 REMOVED_ENTITIES = (
     ("binary_sensor", "baby_breathing_detected"),
     ("binary_sensor", "baby_respiration_measurement_valid"),
     ("binary_sensor", "baby_in_crib"),
+    ("sensor", "baby_respiration_state"),
 )
 
 
