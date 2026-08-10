@@ -2,7 +2,17 @@
 
 An experimental, local-only detector that estimates respiration-like chest/abdomen motion from an RTSP camera and publishes results to Home Assistant — packaged as a Home Assistant add-on with a guided onboarding flow.
 
-> **This is an experimental secondary monitor, not a medical device or a life-safety system. Never use it as the primary or only way to monitor an infant. A valid video signal does not prove an infant is safe, and missing video motion does not prove apnea.**
+## ⚠️ Read this before using it on your child
+
+**This is an experimental hobby project that watches pixels move. It is not a medical device, and it must never be trusted with a life.**
+
+- **No medical claims, no clearance, no validation.** This software has no regulatory clearance of any kind (FDA, CE, or otherwise) and has never been clinically tested. It estimates *image motion* — not airflow, oxygenation, heart rate, or any physiological quantity. "Breathing detected" means *periodic motion consistent with breathing is visible in the video*, nothing more.
+- **It will miss real events, and it will alarm falsely.** A valid signal does **not** prove your baby is safe; a missing signal does **not** prove your baby is in danger. Blankets, position, lighting changes, camera drops, and video compression all break the measurement in ways the detector cannot always distinguish from an emergency — or worse, cannot distinguish an emergency from.
+- **Never use it as the primary or only way to monitor an infant.** Treat every notification as a prompt to go look with your own eyes, never as a diagnosis. If your baby ever looks wrong — color, breathing effort, responsiveness — trust your eyes over any dashboard, and contact emergency services. Do not build automations that take safety-relevant actions from these sensors.
+- **Co-sleeping is a specific hazard for this tool.** The monitor locks onto the strongest breathing-like motion inside the region you draw. If that region can ever include an adult, the monitor may report reassuring "breathing" from *them* regardless of the baby's state — a false sense of safety worse than no monitor at all. The region must contain only the space your baby can occupy.
+- **It does not make any sleep arrangement safe.** Follow your pediatrician's safe-sleep guidance. This tool is not a reason to deviate from it, and using it does not reduce the risks that guidance exists to prevent.
+- **Every camera and room is different.** Thresholds are scene-specific; expect to spend time validating against your own camera (lighting modes, sleep positions, clothing) before the readings mean anything. Until you have watched it behave correctly through several nights — including verifying it goes *quiet* on an empty bed — treat its output as noise.
+- **Provided as-is, without warranty of any kind.** The authors accept no liability for any harm arising from its use. If any of the above is unacceptable, do not use this software.
 
 ## Install as a Home Assistant add-on (recommended)
 

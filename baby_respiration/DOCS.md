@@ -2,7 +2,7 @@
 
 An experimental, local-only detector that estimates respiration-like chest/abdomen motion from an RTSP camera and publishes results through Home Assistant MQTT discovery.
 
-> **This is an experimental secondary monitor, not a medical device or a life-safety system. Never use it as the primary or only way to monitor an infant. A valid video signal does not prove an infant is safe, and missing video motion does not prove apnea. Do not build life-safety automations on top of this add-on.**
+> **This is an experimental secondary monitor, not a medical device or a life-safety system.** It has no regulatory clearance and no clinical validation; it measures image motion, not physiology. It will miss real events and it will alarm falsely: a valid video signal does not prove an infant is safe, and missing video motion does not prove apnea. Never use it as the primary or only way to monitor an infant, never let its region include a co-sleeping adult (it can report *their* breathing as reassurance), never let it change your safe-sleep practices, and do not build life-safety automations on top of this add-on. Every notification is a prompt to go look with your own eyes. Provided as-is, without warranty.
 
 ## Installation
 
