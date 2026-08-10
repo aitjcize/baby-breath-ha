@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.23
+
+- Warm start: the last locked breathing rate is persisted (refreshed every 30 s while locked) and restored after a restart within 10 minutes, enabling the relaxed re-lock floors and rate-continuity escape for a 2-minute window. A redeploy during a shallow-breathing phase previously forced full cold-start hardening and took ~3 minutes to re-lock (observed); a warm restart re-locks like a brief interruption instead. An empty bed was never locked, so cold-start noise defenses are unchanged.
+
 ## 0.3.22
 
 - Entity consolidation: the derived binaries `breathing_detected` (= state `BREATHING`), `measurement_valid` (= state `BREATHING`/`NO_BREATHING_SIGNAL`), and `baby_in_crib` (= presence `PRESENT`) are removed — the two enum sensors are the single source of truth, and discovery cleanup messages delete the old entities from Home Assistant automatically. `breathing_rate_low` stays (its threshold logic is not derivable from state). The notification recipe in DOCS now uses the enums directly — update your automation accordingly.

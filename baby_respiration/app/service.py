@@ -46,6 +46,8 @@ LOG_LEVELS = ("debug", "info", "warning", "error")
 # cost); a short-lived connection refreshes the panel preview at this cadence.
 PAUSED_PREVIEW_INTERVAL = 30.0
 TELEMETRY_KEEP_DAYS = 3
+WARM_STATE_MAX_AGE = 600.0  # restore lock context only within this window
+WARM_STATE_SAVE_INTERVAL = 30.0
 _TELEMETRY_FIELDS = (
     "time", "state", "reason", "bpm", "confidence", "rms", "snr_db",
     "concentration", "block", "stability", "completeness", "presence",
@@ -90,6 +92,8 @@ class BabyRespirationService:
         self._paused_preview_busy = False
         self._telemetry_day: str | None = None
         self._telemetry_file = None
+        self._warm_saved_at = 0.0
+        self._restore_warm_state()
         threshold = self._signal.low_rate_threshold_bpm
         if 0 < threshold <= self._signal.min_bpm:
             LOGGER.warning(
@@ -382,6 +386,8 @@ class BabyRespirationService:
                     self.web_state.update(status, jpeg)
                     self.mqtt.publish({key: value for key, value in status.items() if key not in _WEB_ONLY_STATUS_FIELDS})
                     self._write_telemetry(status, estimate, presence_state.value)
+                    if estimate.breathing_signal and estimate.bpm:
+                        self._save_warm_state(estimate.bpm)
                     if classification.state.value != self._last_logged_state:
                         LOGGER.info(
                             "STATE CHANGE %s -> %s (reason=%s bpm=%s conf=%.1f rms=%.5f snr=%s conc=%.3f block=%s presence=%s stream=%s invalid=%s)",
@@ -668,6 +674,38 @@ class BabyRespirationService:
             "effective": effective,
             "defaults": defaults,
         }
+
+    def _warm_state_path(self):
+        return self.settings.data_dir / "warm_state.json"
+
+    def _restore_warm_state(self) -> None:
+        import json as _json
+        try:
+            raw = _json.loads(self._warm_state_path().read_text(encoding="utf-8"))
+            age = time.time() - float(raw.get("ts", 0))
+            peak_hz = float(raw.get("peak_hz", 0))
+            if 0 <= age <= WARM_STATE_MAX_AGE and peak_hz > 0 and self._monitoring:
+                self.estimator.warm_start(peak_hz)
+                LOGGER.info(
+                    "warm start: locked %.0fs before restart at %.1f BPM; relaxed re-lock floors active",
+                    age,
+                    peak_hz * 60,
+                )
+        except (OSError, ValueError, _json.JSONDecodeError):
+            pass
+
+    def _save_warm_state(self, bpm: float) -> None:
+        import json as _json
+        now = time.time()
+        if now - self._warm_saved_at < WARM_STATE_SAVE_INTERVAL:
+            return
+        self._warm_saved_at = now
+        try:
+            self._warm_state_path().write_text(
+                _json.dumps({"ts": now, "peak_hz": bpm / 60.0}), encoding="utf-8"
+            )
+        except OSError:
+            pass
 
     def _write_telemetry(self, status: dict[str, Any], estimate: RespirationEstimate, presence_value: str) -> None:
         """One CSV row per second in the data dir; survives log rotation."""

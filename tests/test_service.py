@@ -67,6 +67,25 @@ def test_mqtt_settings_resolve_effective_broker(tmp_path: Path) -> None:
     assert service._effective_mqtt() == service.config.mqtt
 
 
+def test_warm_start_roundtrip(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    published: list[dict] = []
+    service.mqtt.publish = published.append  # type: ignore[method-assign]
+    thread = threading.Thread(target=service.run, kwargs={"run_seconds": 40.0})
+    thread.start()
+    thread.join(timeout=60)
+    assert not thread.is_alive()
+    assert (tmp_path / "warm_state.json").exists()  # saved while breathing
+
+    # a fresh service within the age window restores the lock context
+    revived = BabyRespirationService(
+        AppConfig(mqtt=MQTTConfig(enabled=False), debug=DebugConfig(enabled=False)),
+        settings_store=SettingsStore(tmp_path),
+    )
+    assert revived.estimator._warm_pending_hz is not None
+    assert abs(revived.estimator._warm_pending_hz * 60 - 40.0) < 5  # demo runs ~40 BPM
+
+
 def test_monitoring_pause_and_resume(tmp_path: Path) -> None:
     service = make_service(tmp_path)
     service.settings.update(monitoring_enabled=False)

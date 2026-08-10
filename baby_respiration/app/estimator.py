@@ -32,6 +32,9 @@ class RespirationEstimate:
     waveform_y: list[float] = field(default_factory=list)
 
 
+WARM_START_WINDOW = 120.0  # seconds of relaxed floors after a warm restart
+
+
 class RespirationEstimator:
     def __init__(self, camera: CameraConfig, config: SignalConfig) -> None:
         self.camera = camera
@@ -40,12 +43,24 @@ class RespirationEstimator:
         self._last_breathing_at: float | None = None
         self._selected_block: int | None = None
         self._last_peak_hz: float | None = None
+        self._warm_pending_hz: float | None = None
+        self._warm_deadline: float | None = None
+
+    def warm_start(self, peak_hz: float | None) -> None:
+        """Restore pre-restart lock context: the service was locked moments
+        ago, so re-locking may use the relaxed (recently-breathing) floors
+        and the rate-continuity escape for a bounded window. An empty bed
+        was never locked, so the cold-start noise defenses are unaffected."""
+        if peak_hz and peak_hz > 0:
+            self._warm_pending_hz = float(peak_hz)
 
     def clear(self) -> None:
         self._history.clear()
         self._last_breathing_at = None
         self._selected_block = None
         self._last_peak_hz = None
+        self._warm_pending_hz = None
+        self._warm_deadline = None
 
     @staticmethod
     def _block_matrix(valid: list[MotionObservation]) -> tuple[np.ndarray, tuple[int, int]] | None:
@@ -205,9 +220,13 @@ class RespirationEstimator:
         # hold: one rough second must not force the next windows back to cold
         # lock-on thresholds while the physiology is still settling.
         grace = max(self.config.detection_hold_seconds, 0.0)
+        if self._warm_pending_hz is not None:
+            self._warm_deadline = now + WARM_START_WINDOW
+            self._last_peak_hz = self._warm_pending_hz
+            self._warm_pending_hz = None
         was_breathing = (
             self._last_breathing_at is not None and now - self._last_breathing_at <= grace
-        )
+        ) or (self._warm_deadline is not None and now <= self._warm_deadline)
         cutoff = now - self.config.analysis_window_duration
         observations = [item for item in self._history if item.timestamp >= cutoff]
         if len(observations) < 3:
@@ -410,6 +429,7 @@ class RespirationEstimator:
         if breathing_signal:
             self._last_peak_hz = peak_hz
             self._last_breathing_at = now
+            self._warm_deadline = None  # genuinely locked; warm window done
 
         waveform_stride = max(1, len(filtered) // 300)
         waveform_t = (grid[::waveform_stride] - grid[-1]).round(3).tolist()
