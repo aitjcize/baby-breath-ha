@@ -24,7 +24,7 @@ Open the **Baby Respiration** panel in the sidebar. The wizard walks you through
 
 4. **Home Assistant** — choose how readings reach Home Assistant: the broker Home Assistant provides (default, zero setup), a **custom MQTT broker** running anywhere on your network (host, port, credentials), or no MQTT at all. The panel shows live connection status while you save.
 
-Settings persist across restarts and updates. Use **Edit region**, **Camera**, or **MQTT** on the dashboard to change them later.
+Settings persist across restarts and updates. Use **Edit region**, **Camera**, **MQTT**, or **Tuning** on the dashboard to change them later — each opens standalone and returns to the dashboard.
 
 ## What the states mean
 
@@ -96,6 +96,10 @@ Monitoring only makes sense while the baby is asleep. Automate `switch.baby_moni
 ```
 
 While off, the camera stream is fully disconnected — decoding it is the largest CPU cost, bigger than the analysis itself — and the panel shows a still preview refreshed every ~30 s. Re-enabling reconnects and starts a fresh calibration.
+
+## Detection tuning in the panel
+
+The dashboard's **Tuning** card adjusts the detection parameters (breathing band, confidence, low-rate threshold, no-breath timeout, detection hold, minimum amplitude, presence detection) **live** — no restart, no recalibration. Blank fields fall back to the add-on option defaults below; **Use defaults** clears all overrides. Panel values win over add-on options.
 
 ## Options
 

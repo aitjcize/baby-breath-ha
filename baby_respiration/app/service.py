@@ -12,7 +12,7 @@ import cv2
 from app import __version__
 from app.capture import DisabledFrameSource, RTSPFrameSource, SyntheticFrameSource, probe_stream
 from app.classifier import Classification, ConservativeClassifier, DetectorState
-from app.config import AppConfig, CameraConfig, normalize_roi
+from app.config import AppConfig, CameraConfig, SignalConfig, normalize_roi
 from app.estimator import RespirationEstimate, RespirationEstimator
 from app.motion import DenseOpticalFlowExtractor, MotionObservation
 from app.mqtt import MQTTPublisher
@@ -24,9 +24,19 @@ from app.web import WebServer, WebState
 LOGGER = logging.getLogger(__name__)
 
 # Fields that only matter to the web UI; kept out of the MQTT state payload.
-_WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi", "roi_suggestion", "mqtt", "active_block", "invalid_breakdown")
+_WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi", "roi_suggestion", "mqtt", "active_block", "invalid_breakdown", "tuning")
 
 PROBE_PREVIEW_WIDTH = 640
+# Panel-tunable SignalConfig fields with their allowed ranges.
+TUNABLE_RANGES = {
+    "min_bpm": (6, 60),
+    "max_bpm": (20, 120),
+    "minimum_confidence": (0, 100),
+    "no_breath_timeout": (5, 120),
+    "minimum_signal_rms": (0.0002, 0.02),
+    "low_rate_threshold_bpm": (0, 60),
+    "detection_hold_seconds": (0, 60),
+}
 # While paused the stream is disconnected (decoding it is the dominant CPU
 # cost); a short-lived connection refreshes the panel preview at this cadence.
 PAUSED_PREVIEW_INTERVAL = 30.0
@@ -47,12 +57,13 @@ class BabyRespirationService:
         stored = self.settings.get()
         self._camera = self._effective_camera(config.camera, stored.rtsp_url, stored.roi)
         self._monitoring = stored.monitoring_enabled
+        self._signal = self._effective_signal()
         self.source = self._build_source(self._camera.rtsp_url)
-        self.extractor = DenseOpticalFlowExtractor(self._camera, config.signal)
-        self.estimator = RespirationEstimator(self._camera, config.signal)
-        self.classifier = ConservativeClassifier(config.signal)
-        self.scanner = BreathingRegionScanner(config.signal)
-        self.presence = PresenceTracker(enabled=config.signal.presence_enabled)
+        self.extractor = DenseOpticalFlowExtractor(self._camera, self._signal)
+        self.estimator = RespirationEstimator(self._camera, self._signal)
+        self.classifier = ConservativeClassifier(self._signal)
+        self.scanner = BreathingRegionScanner(self._signal)
+        self.presence = PresenceTracker(enabled=self._signal.presence_enabled)
         self._handled_scan_id = 0
         self._roi_suggestion: dict[str, Any] | None = None
         self.mqtt = MQTTPublisher(self._effective_mqtt(), on_monitoring_command=self._on_monitoring_command)
@@ -74,13 +85,13 @@ class BabyRespirationService:
         self._paused_preview_busy = False
         self._telemetry_day: str | None = None
         self._telemetry_file = None
-        threshold = config.signal.low_rate_threshold_bpm
-        if 0 < threshold <= config.signal.min_bpm:
+        threshold = self._signal.low_rate_threshold_bpm
+        if 0 < threshold <= self._signal.min_bpm:
             LOGGER.warning(
                 "low_rate_threshold_bpm (%.0f) is at or below min_bpm (%.0f); rates that low are "
                 "unmeasurable, so the low-rate flag will never trigger",
                 threshold,
-                config.signal.min_bpm,
+                self._signal.min_bpm,
             )
 
     # ------------------------------------------------------------------ setup
@@ -124,6 +135,35 @@ class BabyRespirationService:
         if stored.mqtt_mode == "disabled":
             return replace(base, enabled=False)
         return base
+
+    def _effective_signal(self) -> SignalConfig:
+        """Add-on options are the defaults; panel tuning overrides them live."""
+        overrides = {
+            key: value
+            for key, value in self.settings.get().tuning.items()
+            if key in TUNABLE_RANGES or key == "presence_enabled"
+        }
+        return replace(self.config.signal, **overrides) if overrides else self.config.signal
+
+    def _validate_tuning(self, tuning: dict[str, Any]) -> dict[str, Any]:
+        cleaned: dict[str, Any] = {}
+        for key, value in tuning.items():
+            if key == "presence_enabled":
+                cleaned[key] = bool(value)
+                continue
+            if key not in TUNABLE_RANGES:
+                raise ValueError(f"unknown tuning field: {key}")
+            low, high = TUNABLE_RANGES[key]
+            number = float(value)
+            if not low <= number <= high:
+                raise ValueError(f"{key} must be between {low} and {high}")
+            cleaned[key] = number
+        candidate = replace(self.config.signal, **{k: v for k, v in cleaned.items() if k != "presence_enabled"})
+        if not 0 < candidate.min_bpm < candidate.max_bpm:
+            raise ValueError("min_bpm must be below max_bpm")
+        if self._camera.processing_fps < 2 * candidate.max_bpm / 60:
+            raise ValueError("max_bpm too high for the processing frame rate (Nyquist)")
+        return cleaned
 
     def _build_source(self, url: str) -> RTSPFrameSource | DisabledFrameSource | SyntheticFrameSource:
         if not url:
@@ -179,7 +219,7 @@ class BabyRespirationService:
         with self._preview_lock:
             return self._probe_preview
 
-    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None, mqtt: dict[str, Any] | None = None, monitoring: bool | None = None) -> dict[str, Any]:
+    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None, mqtt: dict[str, Any] | None = None, monitoring: bool | None = None, tuning: dict[str, Any] | None = None) -> dict[str, Any]:
         """Persist wizard-entered settings and queue them for the main loop."""
         update: dict[str, Any] = {}
         if rtsp_url is not None:
@@ -195,6 +235,10 @@ class BabyRespirationService:
                 )
         if monitoring is not None:
             update["monitoring_enabled"] = bool(monitoring)
+        if tuning is not None:
+            if not isinstance(tuning, dict):
+                raise ValueError("tuning must be an object")
+            update["tuning"] = self._validate_tuning(tuning)
         if mqtt is not None:
             if not isinstance(mqtt, dict):
                 raise ValueError("mqtt must be an object")
@@ -395,6 +439,16 @@ class BabyRespirationService:
             pending, self._pending = self._pending, {}
         if not pending:
             return
+        if "tuning" in pending:
+            new_signal = self._effective_signal()
+            if new_signal != self._signal:
+                LOGGER.info("applying tuning overrides: %s", self.settings.get().tuning or "defaults")
+                self._signal = new_signal
+                self.extractor.signal = new_signal
+                self.estimator.config = new_signal
+                self.classifier.config = new_signal
+                self.scanner.signal = new_signal
+                self.presence.enabled = new_signal.presence_enabled
         if "monitoring_enabled" in pending:
             enabled = bool(pending["monitoring_enabled"])
             if enabled != self._monitoring:
@@ -437,8 +491,8 @@ class BabyRespirationService:
                 self.source.start()
             self._last_sequence = -1
             self._latest_overlay = None
-        self.extractor = DenseOpticalFlowExtractor(self._camera, self.config.signal)
-        self.estimator = RespirationEstimator(self._camera, self.config.signal)
+        self.extractor = DenseOpticalFlowExtractor(self._camera, self._signal)
+        self.estimator = RespirationEstimator(self._camera, self._signal)
         self.classifier.reset()
         self._roi_suggestion = None
 
@@ -462,7 +516,7 @@ class BabyRespirationService:
 
     def _update_rate_low(self, bpm: float | None) -> bool:
         """Low-rate flag with hysteresis: on below threshold, off at +2 BPM."""
-        threshold = self.config.signal.low_rate_threshold_bpm
+        threshold = self._signal.low_rate_threshold_bpm
         if bpm is None or threshold <= 0:
             self._rate_low = False
         elif self._rate_low:
@@ -502,7 +556,7 @@ class BabyRespirationService:
             "state": classification.state.value,
             "bpm": bpm,
             "rate_low": self._update_rate_low(bpm),
-            "low_rate_threshold": self.config.signal.low_rate_threshold_bpm,
+            "low_rate_threshold": self._signal.low_rate_threshold_bpm,
             "confidence": estimate.confidence,
             "measurement_valid": classification.measurement_valid,
             "breathing_detected": classification.breathing_detected,
@@ -527,6 +581,7 @@ class BabyRespirationService:
             "roi_suggestion": self._roi_suggestion,
             "active_block": active_block,
             "mqtt": {**self.mqtt.state(), "mode": self.settings.get().mqtt_mode},
+            "tuning": self._tuning_status(),
             "scan": self.scanner.snapshot(),
             "waveform_t": estimate.waveform_t,
             "waveform_y": estimate.waveform_y,
@@ -548,6 +603,14 @@ class BabyRespirationService:
             LOGGER.exception("paused preview refresh failed")
         finally:
             self._paused_preview_busy = False
+
+    def _tuning_status(self) -> dict[str, Any]:
+        fields = list(TUNABLE_RANGES) + ["presence_enabled"]
+        return {
+            "overrides": self.settings.get().tuning,
+            "effective": {field: getattr(self._signal, field) for field in fields},
+            "defaults": {field: getattr(self.config.signal, field) for field in fields},
+        }
 
     def _write_telemetry(self, status: dict[str, Any], estimate: RespirationEstimate, presence_value: str) -> None:
         """One CSV row per second in the data dir; survives log rotation."""
@@ -594,7 +657,7 @@ class BabyRespirationService:
             "state": "MONITORING_OFF",
             "bpm": None,
             "rate_low": False,
-            "low_rate_threshold": self.config.signal.low_rate_threshold_bpm,
+            "low_rate_threshold": self._signal.low_rate_threshold_bpm,
             "confidence": 0.0,
             "measurement_valid": False,
             "breathing_detected": None,
@@ -618,6 +681,7 @@ class BabyRespirationService:
             "roi_suggestion": None,
             "active_block": None,
             "mqtt": {**self.mqtt.state(), "mode": self.settings.get().mqtt_mode},
+            "tuning": self._tuning_status(),
             "scan": self.scanner.snapshot(),
             "waveform_t": [],
             "waveform_y": [],

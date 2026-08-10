@@ -46,6 +46,13 @@ class RuntimeSettings:
     mqtt_username: str = ""
     mqtt_password: str = ""
     monitoring_enabled: bool = True
+    # Panel-set detection tuning; keys mirror SignalConfig fields and
+    # override the add-on option defaults. Empty dict = all defaults.
+    tuning: dict = None  # type: ignore[assignment]
+
+    def __post_init__(self):
+        if self.tuning is None:
+            object.__setattr__(self, "tuning", {})
 
 
 class SettingsStore:
@@ -104,6 +111,7 @@ class SettingsStore:
             mqtt_username=str(raw.get("mqtt_username", "") or ""),
             mqtt_password=str(raw.get("mqtt_password", "") or ""),
             monitoring_enabled=bool(raw.get("monitoring_enabled", True)),
+            tuning=dict(raw.get("tuning") or {}),
         )
 
     def get(self) -> RuntimeSettings:
@@ -121,6 +129,7 @@ class SettingsStore:
         mqtt_username: str | None = None,
         mqtt_password: str | None = None,
         monitoring_enabled: bool | None = None,
+        tuning: dict | None = None,
     ) -> RuntimeSettings:
         """Merge the given fields into the stored settings and persist."""
         if mqtt_mode is not None and mqtt_mode not in MQTT_MODES:
@@ -145,6 +154,8 @@ class SettingsStore:
                 merged = replace(merged, mqtt_password=mqtt_password)
             if monitoring_enabled is not None:
                 merged = replace(merged, monitoring_enabled=bool(monitoring_enabled))
+            if tuning is not None:
+                merged = replace(merged, tuning=dict(tuning))
             self._settings = merged
             self._persist(merged)
             return merged
@@ -158,6 +169,7 @@ class SettingsStore:
             "mqtt_username": settings.mqtt_username,
             "mqtt_password": settings.mqtt_password,
             "monitoring_enabled": settings.monitoring_enabled,
+            "tuning": settings.tuning,
         }
         if settings.roi is not None:
             payload["roi"] = list(settings.roi)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.19
+
+- Detection tuning moved into the panel: a **Tuning** card on the dashboard adjusts the breathing band, minimum confidence, low-rate alert threshold, no-breath timeout, detection hold, minimum amplitude, and presence detection — applied live with no restart and no recalibration. Add-on options remain as defaults; blank fields inherit them, and **Use defaults** clears overrides.
+- Dashboard edit buttons (Edit region / Camera / MQTT) now open standalone: no more being routed through the whole onboarding flow — the step rail hides, Back becomes Cancel, and saving returns straight to the dashboard.
+
 ## 0.3.18
 
 Morning churn diagnosis (baby still, ~544 entity transitions overnight): shallow breathing swings the measured amplitude ~10× with position and covering, and at the faint end (RMS ~0.001–0.003) the empty-bed hardening rejected genuine breathing (`no_coherent_breathing_region` at conf 42, RMS 0.0014 in the captured breakdown).

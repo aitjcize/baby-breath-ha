@@ -105,6 +105,28 @@ def test_paused_service_never_starts_the_stream(tmp_path: Path) -> None:
     assert service.latest_status["state"] == "MONITORING_OFF"
 
 
+def test_tuning_overrides_apply_live(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.apply_settings(tuning={"low_rate_threshold_bpm": 16, "minimum_confidence": 50, "presence_enabled": False})
+    service._apply_pending()
+    assert service._signal.low_rate_threshold_bpm == 16
+    assert service.classifier.config is service._signal
+    assert service.estimator.config is service._signal
+    assert service.presence.enabled is False
+    # persisted for next start
+    assert SettingsStore(tmp_path).get().tuning["minimum_confidence"] == 50
+
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        service.apply_settings(tuning={"max_bpm": 300})
+    with _pytest.raises(ValueError):
+        service.apply_settings(tuning={"bogus_field": 1})
+
+    service.apply_settings(tuning={})  # reset to defaults
+    service._apply_pending()
+    assert service._signal.low_rate_threshold_bpm == service.config.signal.low_rate_threshold_bpm
+
+
 def test_rate_low_flag_with_hysteresis(tmp_path: Path) -> None:
     service = make_service(tmp_path)  # default threshold 20
     assert service._update_rate_low(24.0) is False

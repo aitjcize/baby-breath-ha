@@ -20,7 +20,7 @@ class FakeController:
     def probe_preview(self) -> bytes | None:
         return b"\xff\xd8fakejpeg"
 
-    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None, mqtt: Any = None, monitoring: Any = None) -> dict[str, Any]:
+    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None, mqtt: Any = None, monitoring: Any = None, tuning: Any = None) -> dict[str, Any]:
         self.applied.append({"rtsp_url": rtsp_url, "roi": roi, "mqtt": mqtt})
         return {"applied": True}
 

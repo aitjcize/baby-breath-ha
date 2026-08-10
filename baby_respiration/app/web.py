@@ -31,7 +31,7 @@ class Controller(Protocol):
 
     def probe_preview(self) -> bytes | None: ...
 
-    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None, mqtt: dict[str, Any] | None = None, monitoring: bool | None = None) -> dict[str, Any]: ...
+    def apply_settings(self, rtsp_url: str | None = None, roi: Any = None, mqtt: dict[str, Any] | None = None, monitoring: bool | None = None, tuning: dict[str, Any] | None = None) -> dict[str, Any]: ...
 
 
 class WebState:
@@ -122,6 +122,7 @@ def _handler(state: WebState, controller: Controller | None) -> type[BaseHTTPReq
                         roi=payload.get("roi"),
                         mqtt=payload.get("mqtt"),
                         monitoring=payload.get("monitoring"),
+                        tuning=payload.get("tuning"),
                     )
                     self._send_json(result)
                 else:

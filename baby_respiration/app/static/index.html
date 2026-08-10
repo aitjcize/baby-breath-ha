@@ -125,6 +125,9 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
 .wavecard{margin-top:18px;padding:18px 18px 10px}
 .wavecard h2{font-size:15px;color:var(--ink-dim);font-weight:600}
 #wave{width:100%;height:150px;display:block}
+.tune-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.tune-grid label{color:var(--ink-faint);font-size:12px}
+.tune-grid input{box-sizing:border-box;width:100%;margin-top:4px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel-deep);color:var(--ink);font:14px var(--font-mono)}
 .camcard .actions{margin-top:14px;gap:8px}.camcard .actions button{padding:9px 13px;font-size:13px;white-space:nowrap}
 .diag{margin-top:18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px}
 .stat{background:var(--panel-deep);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px}
@@ -261,12 +264,24 @@ label.check input{accent-color:var(--amber);width:18px;height:18px;margin-top:2p
             <button class="btn-ghost" id="editCam">Camera</button>
             <button class="btn-ghost" id="editMqtt">MQTT</button>
             <button class="btn-ghost" id="monitorBtn" title="Turn breathing analysis on or off">Pause</button>
+            <button class="btn-ghost" id="tuneBtn">Tuning</button>
           </div>
           <p class="hint mono" id="roiLbl" style="margin:12px 2px 0"></p>
           <p class="msg" id="suggestHint" hidden style="margin:10px 0 0;font-size:13.5px"></p>
           <p id="roiWarn" hidden style="margin:10px 0 0;font-size:13.5px;color:var(--amber)"></p>
         </div>
         <div class="diag" id="diag"></div>
+        <div class="card reveal" id="tuneCard" hidden style="margin-top:18px">
+          <h2 style="font-size:16px">Detection tuning</h2>
+          <p class="hint" style="margin:4px 0 12px">Blank fields use the add-on defaults (shown as placeholders). Changes apply immediately — no restart, no recalibration.</p>
+          <div class="tune-grid" id="tuneGrid"></div>
+          <label class="check" style="margin-top:12px"><input type="checkbox" id="tunePresence"><span>Presence detection — pause monitoring when the crib is confirmed empty</span></label>
+          <div class="actions">
+            <button class="btn-primary" id="tuneSave">Apply</button>
+            <button class="btn-ghost" id="tuneReset">Use defaults</button>
+            <span class="msg" id="tuneMsg" role="status"></span>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -322,6 +337,11 @@ function setView(v,step){
 }
 function setStep(n){
   wstep=n;[1,2,3,4].forEach(i=>$("step"+i).hidden=i!==n);
+  $("rail").hidden=!!forced;
+  const cancel=!!forced;
+  $("backTo1").textContent=cancel?"Cancel":"Back";
+  $("backTo2").textContent=cancel?"Cancel":"Back";
+  $("backTo3").textContent=cancel?"Cancel":"Back";
   document.querySelectorAll("#rail .st").forEach(el=>{const s=+el.dataset.s;el.classList.toggle("on",s===n);el.classList.toggle("done",s<n)});
   if(n===3){pendingRoi=null;roiDirty=false;$("saveRegion").disabled=true;$("scanMsg").textContent="";}
   if(n===4){prefillMqtt();$("mqMsg").textContent="";}
@@ -355,8 +375,8 @@ function renderDashCanvas(){
 /* ---------- wizard wiring ---------- */
 $("ack").addEventListener("change",e=>$("toStep2").disabled=!e.target.checked);
 $("toStep2").addEventListener("click",()=>setStep(2));
-$("backTo1").addEventListener("click",()=>setStep(1));
-$("backTo2").addEventListener("click",()=>setStep(2));
+$("backTo1").addEventListener("click",()=>{if(forced){forced=null;setView("dashboard")}else setStep(1)});
+$("backTo2").addEventListener("click",()=>{if(forced){forced=null;setView("dashboard")}else setStep(2)});
 
 $("testBtn").addEventListener("click",async()=>{
   const url=$("rtspUrl").value.trim(),msg=$("testMsg");
@@ -370,8 +390,10 @@ $("testBtn").addEventListener("click",async()=>{
   finally{$("testBtn").disabled=false}
 });
 $("useCamera").addEventListener("click",async()=>{
-  try{await post("api/settings",{rtsp_url:$("rtspUrl").value.trim()});setStep(3)}
-  catch(e){$("testMsg").className="msg err";$("testMsg").textContent=e.message}
+  try{
+    await post("api/settings",{rtsp_url:$("rtspUrl").value.trim()});
+    if(forced){forced=null;setView("dashboard")}else setStep(3);
+  }catch(e){$("testMsg").className="msg err";$("testMsg").textContent=e.message}
 });
 
 $("saveRegion").addEventListener("click",async()=>{
@@ -382,7 +404,36 @@ $("saveRegion").addEventListener("click",async()=>{
 $("redetect").addEventListener("click",()=>{forced="region";setView("wizard",3)});
 $("editMqtt").addEventListener("click",()=>{forced="mqtt";setView("wizard",4)});
 $("monitorBtn").addEventListener("click",()=>{if(!status)return;post("api/settings",{monitoring:status.monitoring===false}).catch(()=>{})});
-$("backTo3").addEventListener("click",()=>setStep(3));
+const TUNE_FIELDS=[["min_bpm","Min BPM"],["max_bpm","Max BPM"],["minimum_confidence","Min confidence %"],["low_rate_threshold_bpm","Low-rate alert BPM"],["no_breath_timeout","No-breath timeout s"],["detection_hold_seconds","Detection hold s"],["minimum_signal_rms","Min amplitude px"]];
+$("tuneGrid").innerHTML=TUNE_FIELDS.map(([k,n])=>`<label>${n}<input type="text" id="tune_${k}" inputmode="decimal" autocomplete="off"></label>`).join("");
+function fillTuning(){
+  const t=(status&&status.tuning)||{overrides:{},effective:{},defaults:{}};
+  for(const [k]of TUNE_FIELDS){
+    const el=$("tune_"+k);
+    el.value=k in t.overrides?t.overrides[k]:"";
+    el.placeholder=t.defaults[k]!==undefined?t.defaults[k]:"";
+  }
+  $("tunePresence").checked=t.effective.presence_enabled!==false;
+}
+$("tuneBtn").addEventListener("click",()=>{const card=$("tuneCard");card.hidden=!card.hidden;if(!card.hidden){fillTuning();$("tuneMsg").textContent=""}});
+$("tuneSave").addEventListener("click",async()=>{
+  const tuning={presence_enabled:$("tunePresence").checked},msg=$("tuneMsg");
+  for(const [k]of TUNE_FIELDS){
+    const raw=$("tune_"+k).value.trim();
+    if(raw==="")continue;
+    const num=Number(raw);
+    if(!isFinite(num)){msg.className="msg err";msg.textContent=`${k} is not a number`;return}
+    tuning[k]=num;
+  }
+  try{await post("api/settings",{tuning});msg.className="msg";msg.textContent="Applied — takes effect within a second."}
+  catch(e){msg.className="msg err";msg.textContent=e.message}
+});
+$("tuneReset").addEventListener("click",async()=>{
+  const msg=$("tuneMsg");
+  try{await post("api/settings",{tuning:{}});msg.className="msg";msg.textContent="Back to add-on defaults.";setTimeout(fillTuning,1500)}
+  catch(e){msg.className="msg err";msg.textContent=e.message}
+});
+$("backTo3").addEventListener("click",()=>{if(forced){forced=null;setView("dashboard")}else setStep(3)});
 $("skipMqtt").addEventListener("click",()=>{forced=null;setView("dashboard")});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function prefillMqtt(){
