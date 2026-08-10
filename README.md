@@ -33,6 +33,36 @@ While invalid, MQTT marks the rate/breathing entities *unavailable* rather than 
 
 The same per-block periodicity scoring runs in two more places: inside the user's box every analysis window (to pick the block currently carrying breathing), and across the full frame after pickup-shaped disturbances (to verify crib occupancy for presence detection). Because it looks for the signal itself rather than a baby-shaped object, it works under IR night vision and blankets where object detectors struggle.
 
+## Example automations
+
+Entity IDs below use the device-name prefix Home Assistant generates (`baby_respiration_detector_…`); check yours under **Settings → Devices → Baby Respiration Detector**.
+
+**Bed-exit warning** — for a baby sleeping on an open bed: `binary_sensor.…_baby_left_region` turns on within seconds when a motion trail *originating inside your monitored box* crosses out and stays out (a caregiver's reach or a co-sleeping adult's movement originates outside the box and can never fire it). It clears automatically when breathing is found inside the box again.
+
+```yaml
+alias: Baby left the bed area
+mode: single
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.baby_respiration_detector_baby_left_region
+    to: "on"
+actions:
+  - action: notify.mobile_app_YOUR_PHONE
+    data:
+      title: "🚼 Baby left the monitored area"
+      message: "Motion from inside the sleep area crossed the boundary — check the bed now."
+      data:
+        push:
+          sound:
+            name: default
+            critical: 1
+            volume: 1.0
+```
+
+**Breathing alert** — the full recipe (no-breathing state, sustained unmeasurable, low rate, all gated on presence) lives in [DOCS.md](baby_respiration/DOCS.md#entities).
+
+As with everything in this project: these are prompts to go look, never a life-safety mechanism.
+
 ## Development
 
 ```sh
