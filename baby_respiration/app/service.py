@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import logging
 import threading
 import time
@@ -29,6 +30,12 @@ PROBE_PREVIEW_WIDTH = 640
 # While paused the stream is disconnected (decoding it is the dominant CPU
 # cost); a short-lived connection refreshes the panel preview at this cadence.
 PAUSED_PREVIEW_INTERVAL = 30.0
+TELEMETRY_KEEP_DAYS = 3
+_TELEMETRY_FIELDS = (
+    "time", "state", "reason", "bpm", "confidence", "rms", "snr_db",
+    "concentration", "block", "stability", "completeness", "presence",
+    "stream", "invalid_breakdown",
+)
 
 
 class BabyRespirationService:
@@ -65,6 +72,8 @@ class BabyRespirationService:
         self._last_logged_state: str | None = None
         self._paused_preview_at = 0.0
         self._paused_preview_busy = False
+        self._telemetry_day: str | None = None
+        self._telemetry_file = None
         threshold = config.signal.low_rate_threshold_bpm
         if 0 < threshold <= config.signal.min_bpm:
             LOGGER.warning(
@@ -297,6 +306,7 @@ class BabyRespirationService:
                     self.latest_status = status
                     self.web_state.update(status, jpeg)
                     self.mqtt.publish({key: value for key, value in status.items() if key not in _WEB_ONLY_STATUS_FIELDS})
+                    self._write_telemetry(status, estimate, presence_state.value)
                     if classification.state.value != self._last_logged_state:
                         LOGGER.info(
                             "STATE CHANGE %s -> %s (reason=%s bpm=%s conf=%.1f rms=%.5f snr=%s conc=%.3f block=%s presence=%s stream=%s invalid=%s)",
@@ -340,6 +350,8 @@ class BabyRespirationService:
             self.mqtt.stop()
             if self.web_server:
                 self.web_server.stop()
+            if self._telemetry_file:
+                self._telemetry_file.close()
             LOGGER.info("service stopped cleanly")
 
     def _handle_presence_scans(self, now: float, stream_status: str) -> None:
@@ -536,6 +548,46 @@ class BabyRespirationService:
             LOGGER.exception("paused preview refresh failed")
         finally:
             self._paused_preview_busy = False
+
+    def _write_telemetry(self, status: dict[str, Any], estimate: RespirationEstimate, presence_value: str) -> None:
+        """One CSV row per second in the data dir; survives log rotation."""
+        try:
+            day = time.strftime("%Y%m%d")
+            if day != self._telemetry_day:
+                if self._telemetry_file:
+                    self._telemetry_file.close()
+                directory = self.settings.data_dir
+                directory.mkdir(parents=True, exist_ok=True)
+                for old_file in sorted(directory.glob("telemetry-*.csv"))[:-TELEMETRY_KEEP_DAYS]:
+                    old_file.unlink(missing_ok=True)
+                path = directory / f"telemetry-{day}.csv"
+                fresh = not path.exists()
+                self._telemetry_file = path.open("a", newline="", encoding="utf-8")
+                if fresh:
+                    csv.writer(self._telemetry_file).writerow(_TELEMETRY_FIELDS)
+                self._telemetry_day = day
+            breakdown = ";".join(f"{key}:{count}" for key, count in sorted(estimate.invalid_breakdown.items()))
+            csv.writer(self._telemetry_file).writerow((
+                time.strftime("%H:%M:%S"),
+                status["state"],
+                status["reason"],
+                status["bpm"] if status["bpm"] is not None else "",
+                status["confidence"],
+                round(estimate.signal_rms, 6),
+                estimate.snr_db if estimate.snr_db is not None else "",
+                round(estimate.peak_concentration, 3),
+                estimate.selected_block if estimate.selected_block is not None else "",
+                round(estimate.motion_stability, 3),
+                round(estimate.data_completeness, 3),
+                presence_value,
+                status["stream_status"],
+                breakdown,
+            ))
+            self._telemetry_file.flush()
+        except OSError as exc:
+            LOGGER.warning("telemetry disabled: %s", exc)
+            self._telemetry_file = None
+            self._telemetry_day = time.strftime("%Y%m%d")
 
     def _make_off_status(self, stream_status: str, reconnect_count: int) -> dict[str, Any]:
         return {

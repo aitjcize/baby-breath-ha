@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.18
+
+Morning churn diagnosis (baby still, ~544 entity transitions overnight): shallow breathing swings the measured amplitude ~10× with position and covering, and at the faint end (RMS ~0.001–0.003) the empty-bed hardening rejected genuine breathing (`no_coherent_breathing_region` at conf 42, RMS 0.0014 in the captured breakdown).
+
+- The block-hardening floors are now Schmitt-triggered like everything else: while recently breathing, periodicity 0.6→0.5, background contrast 3×→2×, neighbour correlation 0.5→0.35. Cold lock-on keeps full hardening — an empty bed is never "recently breathing", so the noise defenses are unchanged.
+- Per-second CSV telemetry in `/data/telemetry-YYYYMMDD.csv` (3-day retention): every gate value, every second, immune to the ~30-minute supervisor log rotation. Threshold tuning can finally be done from a full night of evidence.
+
 ## 0.3.17
 
 User report: unavailable gaps with the baby demonstrably still — the movement theory doesn't cover them all, and the window-level reason (`incomplete_motion_data`) hides *why* frames were discarded.

@@ -46,6 +46,10 @@ def test_demo_end_to_end_status_and_slim_mqtt_payload(tmp_path: Path) -> None:
     # The wizard's ROI edit persisted for the next start.
     assert SettingsStore(tmp_path).get().roi == (0.4, 0.35, 0.35, 0.35)
 
+    # Telemetry CSV captured the run.
+    telemetry = list(tmp_path.glob("telemetry-*.csv"))
+    assert telemetry and len(telemetry[0].read_text().splitlines()) >= 3
+
 
 def test_mqtt_settings_resolve_effective_broker(tmp_path: Path) -> None:
     service = make_service(tmp_path)

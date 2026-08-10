@@ -66,6 +66,10 @@ class SettingsStore:
     def path(self) -> Path:
         return self._path
 
+    @property
+    def data_dir(self) -> Path:
+        return self._dir
+
     def _load(self) -> RuntimeSettings:
         try:
             raw = json.loads(self._path.read_text(encoding="utf-8"))

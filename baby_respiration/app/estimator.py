@@ -78,6 +78,7 @@ class RespirationEstimator:
         valid_t: np.ndarray,
         grid: np.ndarray,
         sample_rate: float,
+        was_breathing: bool = False,
     ) -> int | None:
         """Pick the ROI block with the strongest breathing-band periodicity.
 
@@ -106,13 +107,20 @@ class RespirationEstimator:
         scores = periodicity * band_std
 
         background = float(np.median(band_std))
+        # Shallow breathing (position/covering dependent) hovers at the
+        # hardening floors; while recently locked, relax them Schmitt-style.
+        # Cold lock-on keeps full hardening: an empty bed is never
+        # "recently breathing", so the noise defenses are unchanged there.
+        min_periodicity = 0.5 if was_breathing else self.MINIMUM_BLOCK_PERIODICITY
+        min_contrast = 2.0 if was_breathing else self.BACKGROUND_CONTRAST
+        min_correlation = 0.35 if was_breathing else self.NEIGHBOR_CORRELATION
 
         def supported(index: int) -> bool:
-            if periodicity[index] < self.MINIMUM_BLOCK_PERIODICITY:
+            if periodicity[index] < min_periodicity:
                 return False
             # Localization: a chest is a hot spot against the background;
             # uniform flow noise / AGC / codec pulses are not.
-            if matrix.shape[1] >= self.CONTRAST_MINIMUM_BLOCKS and band_std[index] < self.BACKGROUND_CONTRAST * background:
+            if matrix.shape[1] >= self.CONTRAST_MINIMUM_BLOCKS and band_std[index] < min_contrast * background:
                 return False
             rows, cols = grid_shape
             row, col = index // cols, index % cols
@@ -129,7 +137,7 @@ class RespirationEstimator:
                     if band_std[neighbor] < self.NEIGHBOR_AMPLITUDE_FRACTION * reference_std:
                         continue
                     correlation = float(np.corrcoef(reference, filtered[:, neighbor])[0, 1])
-                    if correlation >= self.NEIGHBOR_CORRELATION:
+                    if correlation >= min_correlation:
                         return True
             return False
 
@@ -257,7 +265,7 @@ class RespirationEstimator:
         blocks = self._block_matrix(valid)
         if blocks is not None:
             block_matrix, block_grid_shape = blocks
-            selected_block = self._select_block(block_matrix, block_grid_shape, valid_t, grid, sample_rate)
+            selected_block = self._select_block(block_matrix, block_grid_shape, valid_t, grid, sample_rate, was_breathing)
         if selected_block is not None and blocks is not None:
             valid_y = blocks[0][:, selected_block].astype(np.float64)
         else:
