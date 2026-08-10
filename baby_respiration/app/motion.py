@@ -125,9 +125,20 @@ class DenseOpticalFlowExtractor:
         self._previous_gray = gray
         frame_change = float(np.mean(cv2.absdiff(previous, gray)))
         if frame_change < 0.01:
+            # An exact repeat (relay stall) carries no motion information.
+            # Treat it as a missing sample immediately: letting it through
+            # would inject zero-motion frames that flatten the rhythm.
             self._frozen_frames += 1
-        else:
-            self._frozen_frames = 0
+            frozen = self._frozen_frames >= max(3, round(self.camera.processing_fps * 2))
+            return (
+                MotionObservation(
+                    timestamp, None, False, False, 0.0, 0.0,
+                    contrast, sharpness, brightness, frame_change,
+                    "frozen_video" if frozen else "duplicate_frame",
+                ),
+                overlay,
+            )
+        self._frozen_frames = 0
 
         flow = cv2.calcOpticalFlowFarneback(
             previous,
@@ -166,8 +177,6 @@ class DenseOpticalFlowExtractor:
             reasons.append("poor_focus")
         if brightness <= 3 or brightness >= 252:
             reasons.append("bad_exposure")
-        if self._frozen_frames >= max(3, round(self.camera.processing_fps * 2)):
-            reasons.append("frozen_video")
 
         valid = not reasons
         return (

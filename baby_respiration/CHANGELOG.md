@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.17
+
+User report: unavailable gaps with the baby demonstrably still — the movement theory doesn't cover them all, and the window-level reason (`incomplete_motion_data`) hides *why* frames were discarded.
+
+- Per-frame invalid breakdown: the estimate, status, and STATE CHANGE log lines now carry a count of discarded frames by cause (`duplicate_frame`, `excessive_motion`, `low_contrast`, `bad_exposure`, stream gaps…) — the next gap names its culprit directly.
+- Duplicated frames (go2rtc relay stalls repeating the last frame) are excluded as missing samples immediately instead of being analyzed: previously up to 2 s of exact repeats passed through as zero-motion samples that flattened the rhythm before the frozen-video threshold tripped, and sustained stalls burned CPU computing optical flow on identical images.
+
 ## 0.3.16
 
 - A moving baby is a breathing baby: when the measurement fails because of gross body movement (stirring, being resettled), the reporting hold refreshes instead of expiring — `breathing_detected` stays ON with a "baby is moving" note, bounded at 5 minutes. Post-deploy logs showed movement episodes were the last source of 20–30 s unavailable gaps; movement is stronger vitality evidence than a rhythm, so reporting it as "unavailable" was wrong. Stream gaps and quiet signal losses keep the strict 15 s hold, and alarm timers remain completely unaffected.

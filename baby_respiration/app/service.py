@@ -23,7 +23,7 @@ from app.web import WebServer, WebState
 LOGGER = logging.getLogger(__name__)
 
 # Fields that only matter to the web UI; kept out of the MQTT state payload.
-_WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi", "roi_suggestion", "mqtt", "active_block")
+_WEB_ONLY_STATUS_FIELDS = ("waveform_t", "waveform_y", "scan", "roi", "roi_suggestion", "mqtt", "active_block", "invalid_breakdown")
 
 PROBE_PREVIEW_WIDTH = 640
 # While paused the stream is disconnected (decoding it is the dominant CPU
@@ -299,7 +299,7 @@ class BabyRespirationService:
                     self.mqtt.publish({key: value for key, value in status.items() if key not in _WEB_ONLY_STATUS_FIELDS})
                     if classification.state.value != self._last_logged_state:
                         LOGGER.info(
-                            "STATE CHANGE %s -> %s (reason=%s bpm=%s conf=%.1f rms=%.5f snr=%s conc=%.3f block=%s presence=%s stream=%s)",
+                            "STATE CHANGE %s -> %s (reason=%s bpm=%s conf=%.1f rms=%.5f snr=%s conc=%.3f block=%s presence=%s stream=%s invalid=%s)",
                             self._last_logged_state,
                             classification.state.value,
                             classification.reason,
@@ -311,6 +311,7 @@ class BabyRespirationService:
                             estimate.selected_block,
                             presence_state.value,
                             snapshot.status,
+                            estimate.invalid_breakdown or "{}",
                         )
                         self._last_logged_state = classification.state.value
                     LOGGER.info(
@@ -504,6 +505,7 @@ class BabyRespirationService:
             "estimated_fps": round(estimate.estimated_fps, 2),
             "window_seconds": round(estimate.window_seconds, 1),
             "data_completeness": round(estimate.data_completeness, 3),
+            "invalid_breakdown": estimate.invalid_breakdown,
             "camera_configured": self.camera_configured,
             "version": __version__,
             "monitoring": True,

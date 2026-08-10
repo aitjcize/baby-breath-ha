@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -27,6 +27,7 @@ class RespirationEstimate:
     excessive_motion: bool = False
     reason: str = "insufficient_data"
     selected_block: int | None = None
+    invalid_breakdown: dict[str, int] = field(default_factory=dict)
     waveform_t: list[float] = field(default_factory=list)
     waveform_y: list[float] = field(default_factory=list)
 
@@ -215,11 +216,17 @@ class RespirationEstimator:
         estimated_fps = float(1.0 / np.median(positive_dt)) if positive_dt.size else 0.0
         excessive_fraction = float(np.mean([item.excessive_motion for item in observations]))
         stability = max(0.0, 1.0 - excessive_fraction)
+        breakdown: Counter[str] = Counter()
+        for item in observations:
+            if not item.valid:
+                for part in item.reason.split(","):
+                    breakdown[part] += 1
         base = dict(
             estimated_fps=estimated_fps,
             window_seconds=duration,
             excessive_motion=observations[-1].excessive_motion,
             motion_stability=stability,
+            invalid_breakdown=dict(breakdown),
         )
         if duration < self.config.minimum_valid_window_duration:
             return RespirationEstimate(reason="window_too_short", **base)
