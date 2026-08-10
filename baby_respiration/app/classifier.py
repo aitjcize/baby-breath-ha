@@ -26,7 +26,30 @@ class Classification:
 
 # Movement keeps refreshing the reporting hold for at most this long; a baby
 # active for longer than this deserves an honest "cannot measure" instead.
+# It also bounds the whole overlay: nothing is ever held more than this long
+# past the last actually-measured breath.
 MOVEMENT_HOLD_LIMIT = 300.0
+
+# A disturbance (movement, a stream gap) corrupts the analysis window, so the
+# estimator is EXPECTED to stay invalid for up to a full window after it ends
+# while clean samples refill it. The recovery hold covers that expected
+# outage: analysis_window_duration plus this margin from the last disrupted
+# sample. Without it a flat hold loses the race by a few seconds and the
+# reported state blips INVALID right before every post-stir re-lock.
+RECOVERY_HOLD_MARGIN = 6.0
+
+# Raw estimator reasons that mean "the window is missing data" rather than
+# "the data is there but fails certification". Only these arm the recovery
+# hold — certification failures (no coherent region, unstable rhythm) must
+# still surface honestly once the base hold expires.
+_WINDOW_DISRUPTED_REASONS = frozenset(
+    {
+        "excessive_motion",
+        "incomplete_motion_data",
+        "too_few_valid_motion_samples",
+        "too_few_resampled_samples",
+    }
+)
 
 
 class ConservativeClassifier:
@@ -40,7 +63,9 @@ class ConservativeClassifier:
         self._calibrated = False
         self._held: Classification | None = None
         self._held_at: float | None = None
+        self._raw_breathing_at: float | None = None
         self._movement_refresh_since: float | None = None
+        self._recovery_until: float | None = None
 
     def reset(self) -> None:
         self._breathing_since = None
@@ -49,7 +74,9 @@ class ConservativeClassifier:
         self._calibrated = False
         self._held = None
         self._held_at = None
+        self._raw_breathing_at = None
         self._movement_refresh_since = None
+        self._recovery_until = None
 
     def update(
         self,
@@ -69,18 +96,32 @@ class ConservativeClassifier:
         if raw.state == DetectorState.BREATHING:
             self._held = raw
             self._held_at = now
+            self._raw_breathing_at = now
             self._movement_refresh_since = None
+            self._recovery_until = None
             return raw
         if raw.state in (DetectorState.NO_BREATHING_SIGNAL, DetectorState.CRIB_EMPTY):
             self._held = None
             self._held_at = None
+            self._raw_breathing_at = None
             self._movement_refresh_since = None
+            self._recovery_until = None
             return raw
-        if hold > 0 and self._held is not None and self._held_at is not None:
+        if (
+            hold > 0
+            and self._held is not None
+            and self._held_at is not None
+            and self._raw_breathing_at is not None
+            and now - self._raw_breathing_at <= MOVEMENT_HOLD_LIMIT
+        ):
             # Gross body movement makes the measurement fail while proving the
             # baby is alive — stronger vitality evidence than a rhythm. Refresh
             # the hold through movement (bounded), instead of expiring it.
             movement = estimate.excessive_motion or 0.0 < estimate.motion_stability < 0.85
+            if movement or estimate.reason in _WINDOW_DISRUPTED_REASONS:
+                self._recovery_until = (
+                    now + self.config.analysis_window_duration + RECOVERY_HOLD_MARGIN
+                )
             if movement:
                 if self._movement_refresh_since is None:
                     self._movement_refresh_since = now
@@ -101,6 +142,14 @@ class ConservativeClassifier:
                     True,
                     True,
                     f"holding_through_interruption:{raw.reason}",
+                    self._held.calibrated,
+                )
+            if self._recovery_until is not None and now <= self._recovery_until:
+                return Classification(
+                    DetectorState.BREATHING,
+                    True,
+                    True,
+                    f"holding_through_recovery:{raw.reason}",
                     self._held.calibrated,
                 )
         return raw

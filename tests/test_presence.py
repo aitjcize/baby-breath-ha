@@ -143,10 +143,50 @@ def test_movement_refreshes_the_hold_beyond_its_duration() -> None:
         assert held.state == DetectorState.BREATHING, f"dropped at t={t}"
         assert held.reason.startswith("holding_through_movement")
 
-    # Movement ends into a quiet loss: the normal hold takes over, then expires.
+    # Movement ends into a quiet loss: the base hold takes over, then the
+    # recovery hold covers one analysis window (24 s + margin) past the last
+    # disturbance, then reporting goes honest.
     quiet = RespirationEstimate(reason="stream_reconnecting")
-    assert classifier.update(quiet, 70.0).state == DetectorState.BREATHING  # within hold
-    assert classifier.update(quiet, 90.0).state == DetectorState.MEASUREMENT_INVALID
+    assert classifier.update(quiet, 70.0).state == DetectorState.BREATHING  # base hold
+    recovering = classifier.update(quiet, 85.0)
+    assert recovering.state == DetectorState.BREATHING
+    assert recovering.reason.startswith("holding_through_recovery")
+    assert classifier.update(quiet, 91.0).state == DetectorState.MEASUREMENT_INVALID
+
+
+def test_recovery_hold_bridges_post_movement_window_refill() -> None:
+    """A stir corrupts the analysis window and the estimator needs up to a
+    full window of clean samples afterwards. The reported state bridges that
+    expected outage instead of blipping INVALID right before the re-lock."""
+    config = SignalConfig(baseline_required_duration=2, no_breath_timeout=300, detection_hold_seconds=15)
+    classifier = ConservativeClassifier(config)
+    classifier.update(estimate(breathing=True), 0)
+    classifier.update(estimate(breathing=True), 2.1)
+
+    moving = RespirationEstimate(reason="excessive_motion", excessive_motion=True, motion_stability=0.4)
+    classifier.update(moving, 5.0)
+    # Window refill runs well past the 15 s base hold before re-certifying.
+    refill = RespirationEstimate(reason="incomplete_motion_data")
+    for t in (10.0, 15.0, 21.0, 27.0):
+        held = classifier.update(refill, t)
+        assert held.state == DetectorState.BREATHING, f"blipped at t={t}"
+    hunting = RespirationEstimate(reason="rhythm_not_stable")
+    held = classifier.update(hunting, 30.0)
+    assert held.state == DetectorState.BREATHING
+    assert held.reason.startswith("holding_through_recovery")
+    assert classifier.update(estimate(breathing=True), 31.0).state == DetectorState.BREATHING
+
+
+def test_certification_failures_do_not_extend_the_hold() -> None:
+    """Only missing data arms the recovery hold: a scene that has data but
+    keeps failing certification surfaces honestly once the base hold ends."""
+    config = SignalConfig(baseline_required_duration=2, no_breath_timeout=300, detection_hold_seconds=10)
+    classifier = ConservativeClassifier(config)
+    classifier.update(estimate(breathing=True), 0)
+    classifier.update(estimate(breathing=True), 2.1)
+    hunting = RespirationEstimate(reason="no_coherent_breathing_region")
+    assert classifier.update(hunting, 8.0).state == DetectorState.BREATHING
+    assert classifier.update(hunting, 13.0).state == DetectorState.MEASUREMENT_INVALID
 
 
 def test_movement_hold_is_bounded() -> None:

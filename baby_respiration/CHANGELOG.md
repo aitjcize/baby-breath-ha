@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.27
+
+- Recovery hold: a disturbance (a stir, a stream gap) corrupts the ~24 s analysis window, so the estimator is *expected* to stay invalid for up to a window after it ends — but the flat hold expired a few seconds before each re-lock, blipping `MEASUREMENT_INVALID` for 1–12 s after every stir (observed in telemetry). While the invalid stretch is caused by missing window data (movement, gaps), the hold now extends to one analysis window + 6 s past the last disrupted sample. Certification failures (no coherent region, unstable rhythm) still surface once the base hold ends, the whole overlay is capped at 5 minutes past the last actually-measured breath, and alarms punch through unchanged.
+- Fixed a drifted default: the add-on config loader carried its own `detection_hold_seconds` fallback of **10 s**, shadowing the documented 15 s default since the options file became empty in 0.3.20. The loader now defers to the dataclass defaults for every unset option.
+
 ## 0.3.26
 
 - The sidebar panel is visible to non-admin users (`panel_admin: false`) — everyone in the household can see the dashboard, not just admins.
